@@ -25,6 +25,7 @@ export const RESUME_DB_COLLECTIONS = [
   'skillRows',
   'skills',
   'templates',
+  'generatedResumes',
 ] as const
 export type ResumeDbCollectionName = (typeof RESUME_DB_COLLECTIONS)[number]
 
@@ -52,6 +53,30 @@ export function subscribeToResumeDbCollection<T extends { id: string }>(
 export async function resumeDbCollectionIsEmpty(uid: string, name: ResumeDbCollectionName): Promise<boolean> {
   const snapshot = await getDocs(query(collectionRef(uid, name), limit(1)))
   return snapshot.empty
+}
+
+/** One-shot full read (no live listener, no ordering) — used for migrations/backfills. */
+export async function getResumeDbCollectionDocs<T extends { id: string }>(
+  uid: string,
+  name: ResumeDbCollectionName,
+): Promise<T[]> {
+  const snapshot = await getDocs(collectionRef(uid, name))
+  return snapshot.docs.map((docSnap) => fromSnapshot<T>(docSnap))
+}
+
+/** Mints a fresh doc id without writing anything — useful when the id must be known before the first write (e.g. a Storage path that embeds it). */
+export function newResumeDbDocId(uid: string, name: ResumeDbCollectionName): string {
+  return doc(collectionRef(uid, name)).id
+}
+
+/** Writes a doc at a specific (already-minted) id, e.g. from newResumeDbDocId. */
+export function setResumeDbDoc(
+  uid: string,
+  name: ResumeDbCollectionName,
+  id: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  return setDoc(doc(db, 'users', uid, name, id), { ...data, createdAt: serverTimestamp() })
 }
 
 export async function createResumeDbDoc(

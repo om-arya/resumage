@@ -22,7 +22,6 @@ export const JAKES_RESUME_TEMPLATE: ResumeTemplate = {
 \usepackage[hidelinks]{hyperref}
 \usepackage[english]{babel}
 \usepackage{tabularx}
-\input{glyphtounicode}
 
 \pagestyle{empty}
 
@@ -41,8 +40,6 @@ export const JAKES_RESUME_TEMPLATE: ResumeTemplate = {
 \titleformat{\section}{
   \vspace{-4pt}\scshape\raggedright\large
 }{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
-
-\pdfgentounicode=1
 
 \newcommand{\resumeItem}[1]{
   \item\small{#1 \vspace{-2pt}}

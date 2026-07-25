@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import {
   createResumeDbDoc,
   deleteResumeDbDoc,
+  getResumeDbCollectionDocs,
   resumeDbCollectionIsEmpty,
   setActiveTemplateId as setActiveTemplateIdDoc,
   subscribeToActiveTemplateId,
@@ -11,25 +12,58 @@ import {
 import { JAKES_RESUME_TEMPLATE } from '../lib/template/jakesResumeTemplate'
 import type { ResumeTemplate } from '../types/template'
 
+const BUILT_IN_TEMPLATE_FIELDS = [
+  'name',
+  'latexPreamble',
+  'latexPostamble',
+  'mainBodyLatex',
+  'sectionWrapperLatex',
+  'entryWrapperLatex',
+  'bulletWrapperLatex',
+  'bulletListWrapperLatex',
+  'skillRowWrapperLatex',
+  'skillListSeparator',
+  'headerWrapperLatex',
+] as const satisfies readonly Exclude<keyof ResumeTemplate, 'id' | 'isBuiltIn'>[]
+
+function builtInSeedData(): Record<string, string> {
+  return Object.fromEntries(BUILT_IN_TEMPLATE_FIELDS.map((field) => [field, JAKES_RESUME_TEMPLATE[field]]))
+}
+
 async function ensureDefaultTemplateSeeded(uid: string): Promise<void> {
   const isEmpty = await resumeDbCollectionIsEmpty(uid, 'templates')
-  if (!isEmpty) return
+  if (isEmpty) {
+    const newId = await createResumeDbDoc(uid, 'templates', {
+      ...builtInSeedData(),
+      isBuiltIn: true,
+      order: 0,
+    })
+    await setActiveTemplateIdDoc(uid, newId)
+    return
+  }
 
-  const newId = await createResumeDbDoc(uid, 'templates', {
-    name: JAKES_RESUME_TEMPLATE.name,
-    latexPreamble: JAKES_RESUME_TEMPLATE.latexPreamble,
-    latexPostamble: JAKES_RESUME_TEMPLATE.latexPostamble,
-    mainBodyLatex: JAKES_RESUME_TEMPLATE.mainBodyLatex,
-    sectionWrapperLatex: JAKES_RESUME_TEMPLATE.sectionWrapperLatex,
-    entryWrapperLatex: JAKES_RESUME_TEMPLATE.entryWrapperLatex,
-    bulletWrapperLatex: JAKES_RESUME_TEMPLATE.bulletWrapperLatex,
-    bulletListWrapperLatex: JAKES_RESUME_TEMPLATE.bulletListWrapperLatex,
-    skillRowWrapperLatex: JAKES_RESUME_TEMPLATE.skillRowWrapperLatex,
-    skillListSeparator: JAKES_RESUME_TEMPLATE.skillListSeparator,
-    headerWrapperLatex: JAKES_RESUME_TEMPLATE.headerWrapperLatex,
-    order: 0,
-  })
-  await setActiveTemplateIdDoc(uid, newId)
+  const existingTemplates = await getResumeDbCollectionDocs<ResumeTemplate>(uid, 'templates')
+
+  // Backfill: accounts that seeded Jake's Resume before `isBuiltIn` existed
+  // never got the flag written, since seeding only runs once per account.
+  // Also covers accounts already correctly flagged.
+  const builtIn = existingTemplates.find(
+    (template) =>
+      template.isBuiltIn ||
+      (template.name === JAKES_RESUME_TEMPLATE.name && template.latexPreamble === JAKES_RESUME_TEMPLATE.latexPreamble),
+  )
+  if (!builtIn) return
+
+  // Self-heal: the built-in template is read-only, so it's always safe to
+  // resync it to the current seed data — this is how fixes to the seed
+  // constant (e.g. a Tectonic-incompatible preamble line) reach accounts
+  // that already seeded a copy, not just new signups.
+  const seedData = builtInSeedData()
+  const needsUpdate =
+    !builtIn.isBuiltIn || BUILT_IN_TEMPLATE_FIELDS.some((field) => builtIn[field] !== seedData[field])
+  if (needsUpdate) {
+    await updateResumeDbDoc(uid, 'templates', builtIn.id, { ...seedData, isBuiltIn: true })
+  }
 }
 
 interface TemplatesState {
@@ -95,6 +129,7 @@ export const useTemplatesStore = create<TemplatesState>((set, get) => ({
     const newId = await createResumeDbDoc(uid, 'templates', {
       ...base,
       name,
+      isBuiltIn: false,
       // Not part of ResumeTemplate's shape — exists purely so the generic
       // orderBy('order') query in subscribeToResumeDbCollection includes this doc.
       order: get().templates.length,
@@ -105,12 +140,20 @@ export const useTemplatesStore = create<TemplatesState>((set, get) => ({
   async updateTemplate(id, patch) {
     const uid = get().uid
     if (!uid) return
+    const existing = get().templates.find((template) => template.id === id)
+    if (existing?.isBuiltIn) {
+      throw new Error("Jake's Resume is a read-only default — duplicate it to make changes.")
+    }
     await updateResumeDbDoc(uid, 'templates', id, patch)
   },
 
   async deleteTemplate(id) {
     const uid = get().uid
     if (!uid) return
+    const existing = get().templates.find((template) => template.id === id)
+    if (existing?.isBuiltIn) {
+      throw new Error("Jake's Resume is a read-only default and can't be deleted.")
+    }
     await deleteResumeDbDoc(uid, 'templates', id)
   },
 

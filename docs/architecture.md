@@ -95,20 +95,27 @@ Folder structure, routing, and component hierarchy: see `src/` — `lib/firebase
 
 **Firestore rules** (flat structure → one uniform wildcard rule) and **Storage rules** (per-uid path prefix) — see `firestore.rules` / `storage.rules` at the repo root. Route guards (`ProtectedRoute`/`PublicOnlyRoute`) are UX only; the real boundary is rules + Cloud Function auth checks. Field-level rule validation, rate limiting, and App Check are deferred to Milestone 7.
 
-## 10. Milestone Roadmap
+## 10. Resume import (auto-parse) — Milestone 9
+
+Upload an existing resume PDF to auto-populate the Resume DB instead of starting blank. Reuses `extractJdText` (§7) unchanged for PDF→text. `heuristicResumeParser.ts` (`src/lib/import/`) structures it deterministically — no paid APIs, no LLM — behind a `ResumeParserProvider` interface, the same swappable pattern as §4.
+
+Parse-then-review, never a silent write: the parse is an in-memory draft; a checklist UI lets the user toggle/edit before import, and only confirmed items go through the existing `resumeDbStore` CRUD actions, so they get default-LaTeX and semantic/embedding generation exactly like hand-typed content.
+
+## 11. Milestone Roadmap
 
 - **M1 (done)** — scaffolding, Firebase wiring, full auth flow (sign up/log in/log out/reset password).
-- **M2 (done)** — Resume DB CRUD (§2/§3), template-driven default-LaTeX generation, drag-drop reordering. LaTeX override tracking uses a local draft-then-single-Save model (`useDraftEntity` + `pendingChangesStore`) rather than the originally-planned per-field save + warning dialog: the LaTeX box is always live and visible, so there's nothing to silently clobber.
-- **M3 (done)** — Semantic extractor (§4) wired to every save (`src/lib/semantic/`); embeddings computed in a Web Worker via `@xenova/transformers`, cached in IndexedDB (`idb-keyval`) and mirrored to Firestore (`src/lib/ai/`), gated by a content hash so unchanged text never recomputes. No ranking UI yet.
-- **M4 (done)** — Templates are real Firestore documents (`users/{uid}/templates`), no longer a hardcoded constant; Jake's Resume auto-seeds as the first template on a user's first visit and becomes their active template (`activeTemplateId` on the user doc). `/templates` provides CRUD (create-by-duplicating, set active, delete-guarded against deleting the active/last template) plus a live-preview editor: `renderTemplate.ts` assembles the full .tex source (bullets → entries/skill rows → sections → main body → preamble/postamble) from the *current template draft* against the user's actual resume DB content, re-rendering on every keystroke. "Live preview" means the generated LaTeX source, not a compiled PDF — that's still Milestone 5 + Tectonic. All five default-LaTeX generation call sites (resumeDbStore actions and the resume-editor components' `useDraftEntity` callbacks) now read the live active template instead of the old hardcoded `JAKES_RESUME_TEMPLATE` import.
-- **M5** — Generation pipeline + `extractJdText`/`compileLatex` (§7); resolve Tectonic bundling; ranking/knapsack pure functions + tests; profile for <10s.
+- **M2 (done)** — Resume DB CRUD (§2/§3), template-driven default-LaTeX generation, drag-drop reordering, local draft-then-Save editing model.
+- **M3 (done)** — Semantic extractor (§4) wired to every save; embeddings via Web Worker, cached in IndexedDB + Firestore, hash-gated. No ranking UI yet.
+- **M4 (done)** — Templates are real Firestore documents, not hardcoded; Jake's Resume auto-seeds and becomes active; `/templates` provides CRUD plus a live LaTeX-source preview editor.
+- **M5 (done)** — Generation pipeline: Cloud Functions `extractJdText`/`compileLatex` (§7, bundled Tectonic — deploying is a user-run step, needs the Blaze plan), deterministic ranking/knapsack (§5), `/generate` UI.
 - **M6** — PDF preview, LaTeX source viewer, section-order/page-constraint settings UI.
 - **M7** — Security hardening: field-level rules, rate limiting/App Check, function auth audit.
-- **M8** — Remaining test coverage (§11) + CI (GitHub Actions: lint/typecheck/unit, optional emulator integration job).
+- **M8** — Remaining test coverage (§12) + CI (GitHub Actions: lint/typecheck/unit, optional emulator integration job).
+- **M9** — Resume upload + auto-parse into the Resume DB (§10): review-before-import, no separate data path.
 
-## 11. Testing Strategy
+## 12. Testing Strategy
 
-- **Unit (Vitest, no DOM)**: `cosineSimilarity`, `computeRelevanceScore`, `fitToPageConstraints`, `generateSemanticText`, `substitutePlaceholders`/`renderTemplate`, `generateDefaultLatex`, `validation.ts`, `authErrorMessages.ts`.
+- **Unit (Vitest, no DOM)**: `cosineSimilarity`, `computeRelevanceScore`, `fitToPageConstraints`, `generateSemanticText`, `substitutePlaceholders`/`renderTemplate`, `generateDefaultLatex`, `validation.ts`, `authErrorMessages.ts`, `heuristicResumeParser` (fixture resumes of varying layouts).
 - **Component (Vitest + RTL + jsdom)**: auth forms, route guards, entry/bullet editor override-warning flow, generation stepper. Mock `firebase/auth` and Zustand stores.
 - **Cloud Function tests**: Firebase Emulator Suite driving `extractJdText`/`compileLatex` with fixtures.
 - **Integration**: `@firebase/rules-unit-testing` for cross-user Firestore rule isolation; fixture-based full-pipeline test (M5+) with a stubbed deterministic embedding provider.

@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { twMerge } from 'tailwind-merge'
 import { Button } from '../common/Button'
+import { Input } from '../common/Input'
 import { useSyncedState } from '../../hooks/useSyncedState'
 import { useResumeDbStore } from '../../stores/resumeDbStore'
 import { useTemplatesStore } from '../../stores/templatesStore'
@@ -10,8 +12,11 @@ interface TemplateEditorProps {
   template: ResumeTemplate
 }
 
-const FIELD_DEFS: { key: Exclude<keyof ResumeTemplate, 'id'>; label: string; rows: number }[] = [
-  { key: 'name', label: 'Name', rows: 1 },
+const FIELD_DEFS: {
+  key: Exclude<keyof ResumeTemplate, 'id' | 'isBuiltIn' | 'name'>
+  label: string
+  rows: number
+}[] = [
   { key: 'latexPreamble', label: 'LaTeX preamble', rows: 10 },
   {
     key: 'headerWrapperLatex',
@@ -61,7 +66,8 @@ export function TemplateEditor({ template }: TemplateEditorProps) {
   )
   const [saving, setSaving] = useState(false)
 
-  const isDirty = JSON.stringify(draft) !== JSON.stringify(template)
+  const isReadOnly = Boolean(template.isBuiltIn)
+  const isDirty = !isReadOnly && JSON.stringify(draft) !== JSON.stringify(template)
 
   async function handleSave() {
     setSaving(true)
@@ -83,6 +89,20 @@ export function TemplateEditor({ template }: TemplateEditorProps) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div className="flex flex-col gap-3">
+        {isReadOnly ? (
+          <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+            Jake&apos;s Resume is a read-only default, so it always stays available as a known-good
+            fallback. Duplicate it from the list above to customize your own copy.
+          </p>
+        ) : null}
+        <Input
+          id="template-name"
+          label="Name"
+          value={draft.name}
+          onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))}
+          readOnly={isReadOnly}
+          className={isReadOnly ? 'cursor-not-allowed bg-slate-50 text-slate-500' : ''}
+        />
         {FIELD_DEFS.map(({ key, label, rows }) => (
           <div key={key} className="flex flex-col gap-1">
             <label htmlFor={`template-${key}`} className="text-sm font-medium text-slate-700">
@@ -93,22 +113,28 @@ export function TemplateEditor({ template }: TemplateEditorProps) {
               value={draft[key]}
               onChange={(e) => setDraft((prev) => ({ ...prev, [key]: e.target.value }))}
               rows={rows}
-              className="w-full rounded-md border border-slate-300 p-2 font-mono text-xs outline-none focus:ring-2 focus:ring-slate-400"
+              readOnly={isReadOnly}
+              className={twMerge(
+                'w-full rounded-md border border-slate-300 p-2 font-mono text-xs outline-none focus:ring-2 focus:ring-slate-400',
+                isReadOnly && 'cursor-not-allowed bg-slate-50 text-slate-500',
+              )}
             />
           </div>
         ))}
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            className="w-auto px-4"
-            loading={saving}
-            disabled={!isDirty}
-            onClick={handleSave}
-          >
-            Save template
-          </Button>
-          <span className="text-xs text-slate-500">{isDirty ? 'Unsaved changes' : 'Saved'}</span>
-        </div>
+        {isReadOnly ? null : (
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              className="w-auto px-4"
+              loading={saving}
+              disabled={!isDirty}
+              onClick={handleSave}
+            >
+              Save template
+            </Button>
+            <span className="text-xs text-slate-500">{isDirty ? 'Unsaved changes' : 'Saved'}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-1 lg:sticky lg:top-4 lg:self-start">

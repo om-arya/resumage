@@ -96,6 +96,11 @@ export function TemplatesPage() {
                     Active
                   </span>
                 ) : null}
+                {template.isBuiltIn ? (
+                  <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                    Default (read-only)
+                  </span>
+                ) : null}
               </button>
               <div className="flex items-center gap-3">
                 {isActive ? null : (
@@ -107,15 +112,17 @@ export function TemplatesPage() {
                     Set active
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="text-xs text-red-600 underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline"
-                  disabled={isActive || templates.length <= 1}
-                  title={isActive ? 'Set another template active before deleting this one' : undefined}
-                  onClick={() => handleDelete(template.id)}
-                >
-                  Delete
-                </button>
+                {template.isBuiltIn ? null : (
+                  <button
+                    type="button"
+                    className="text-xs text-red-600 underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline"
+                    disabled={isActive || templates.length <= 1}
+                    title={isActive ? 'Set another template active before deleting this one' : undefined}
+                    onClick={() => handleDelete(template.id)}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
           )

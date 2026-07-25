@@ -46,7 +46,7 @@ npm run dev
 
 Visiting the app while logged out redirects to `/login`. Sign up, log in, log out, and password reset are all wired up against your Firebase project.
 
-Once logged in, `/resume-db` is your master resume database: basic info, sections (experience-style entries with bullets, or skill categories), all with drag-drop reordering, a "must include" flag, and per-item LaTeX you can either let auto-generate from the form fields or override by hand.
+Once logged in, `/resume-db` is your master resume database: basic info, sections (experience-style entries with bullets, or skill categories), all with drag-drop reordering, a "must include" flag, and per-item LaTeX you can either let auto-generate from the form fields or override by hand. `/templates` lets you customize the LaTeX template (Jake's Resume ships as a read-only default — duplicate it to edit). `/generate` produces a job-tailored PDF, but that requires the Cloud Functions below to be deployed first.
 
 ## Scripts
 
@@ -67,3 +67,24 @@ Once `firebase init` has linked this repo to your project:
 ```bash
 firebase deploy --only firestore:rules,firestore:indexes,storage
 ```
+
+## Cloud Functions (PDF generation)
+
+`/generate` calls two Cloud Functions — `extractJdText` (JD PDF → text) and `compileLatex` (LaTeX → PDF via a bundled [Tectonic](https://tectonic-typesetting.github.io/) binary). Everything else in this app runs entirely on Firebase's free tier, but Cloud Functions (2nd gen) run on Cloud Run/Cloud Build, which **requires upgrading your Firebase project to the Blaze (pay-as-you-go) plan** — usage at this app's scale should stay within Firebase's free monthly quota (2M invocations, 400K GB-seconds), so the Blaze plan itself doesn't mean you'll be charged, just that billing is enabled.
+
+1. In the [Firebase Console](https://console.firebase.google.com/), upgrade your project to the **Blaze** plan (Project settings → Usage and billing).
+2. Install the functions' own dependencies (this also fetches the Tectonic binary via a `postinstall` script — a ~25MB download):
+
+   ```bash
+   cd functions
+   npm install
+   cd ..
+   ```
+
+3. Deploy:
+
+   ```bash
+   firebase deploy --only functions
+   ```
+
+If you ever need to re-fetch the Tectonic binary manually (e.g. the postinstall script failed), download `tectonic-0.16.9-x86_64-unknown-linux-musl.tar.gz` from the [Tectonic releases page](https://github.com/tectonic-typesetting/tectonic/releases), extract it, and place the `tectonic` binary at `functions/bin/tectonic` (executable).

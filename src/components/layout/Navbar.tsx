@@ -22,6 +22,9 @@ export function Navbar() {
             <Link to="/templates" className="hover:text-slate-900">
               Templates
             </Link>
+            <Link to="/generate" className="hover:text-slate-900">
+              Generate
+            </Link>
           </nav>
         ) : null}
       </div>

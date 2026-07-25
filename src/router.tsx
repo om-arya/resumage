@@ -8,6 +8,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ResumeEditorPage } from './pages/ResumeEditorPage'
 import { TemplatesPage } from './pages/TemplatesPage'
+import { GeneratePage } from './pages/GeneratePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
 export const router = createBrowserRouter([
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
           { path: 'dashboard', element: <DashboardPage /> },
           { path: 'resume-db', element: <ResumeEditorPage /> },
           { path: 'templates', element: <TemplatesPage /> },
+          { path: 'generate', element: <GeneratePage /> },
         ],
       },
       { path: '*', element: <NotFoundPage /> },

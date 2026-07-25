@@ -24,4 +24,6 @@ export interface ResumeTemplate {
   skillListSeparator: string
   /** Placeholders: {{NAME}}, {{EMAIL}}, {{PHONE}}, {{LOCATION}}, {{LINKS}} */
   headerWrapperLatex: string
+  /** True only for the seeded Jake's Resume default — read-only so it always stays a known-good fallback. Duplicate it to customize. */
+  isBuiltIn?: boolean
 }
