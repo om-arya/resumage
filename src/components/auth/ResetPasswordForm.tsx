@@ -41,7 +41,7 @@ export function ResetPasswordForm() {
         error={emailError}
       />
       <FormError message={error} />
-      <Button type="submit" loading={loading}>
+      <Button type="submit" className="w-full" loading={loading}>
         Send reset email
       </Button>
     </form>

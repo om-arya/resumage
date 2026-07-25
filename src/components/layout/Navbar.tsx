@@ -7,9 +7,21 @@ export function Navbar() {
 
   return (
     <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-      <Link to="/" className="text-lg font-semibold text-slate-900">
-        resumage
-      </Link>
+      <div className="flex items-center gap-6">
+        <Link to="/" className="text-lg font-semibold text-slate-900">
+          resumage
+        </Link>
+        {user ? (
+          <nav className="flex items-center gap-4 text-sm text-slate-600">
+            <Link to="/dashboard" className="hover:text-slate-900">
+              Dashboard
+            </Link>
+            <Link to="/resume-db" className="hover:text-slate-900">
+              Resume database
+            </Link>
+          </nav>
+        ) : null}
+      </div>
       {user ? (
         <div className="flex items-center gap-4">
           <span className="text-sm text-slate-600">{user.email}</span>

@@ -68,7 +68,7 @@ export function SignUpForm() {
         error={fieldErrors.confirmPassword}
       />
       <FormError message={error} />
-      <Button type="submit" loading={loading}>
+      <Button type="submit" className="w-full" loading={loading}>
         Sign up
       </Button>
     </form>

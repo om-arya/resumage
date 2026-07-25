@@ -98,7 +98,7 @@ Folder structure, routing, and component hierarchy: see `src/` — `lib/firebase
 ## 10. Milestone Roadmap
 
 - **M1 (done)** — scaffolding, Firebase wiring, full auth flow (sign up/log in/log out/reset password).
-- **M2** — Resume DB CRUD (§2/§3), template-driven default-LaTeX generation, override state machine + warning dialog, drag-drop reordering.
+- **M2 (done)** — Resume DB CRUD (§2/§3), template-driven default-LaTeX generation, override state machine + warning dialog, drag-drop reordering.
 - **M3** — Semantic extractor (§4) wired to every save; embeddings + worker + cache (§5), no ranking UI yet.
 - **M4** — Template CRUD + live-preview editor; seed Jake's Resume as data (§6).
 - **M5** — Generation pipeline + `extractJdText`/`compileLatex` (§7); resolve Tectonic bundling; ranking/knapsack pure functions + tests; profile for <10s.

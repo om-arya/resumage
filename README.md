@@ -46,6 +46,8 @@ npm run dev
 
 Visiting the app while logged out redirects to `/login`. Sign up, log in, log out, and password reset are all wired up against your Firebase project.
 
+Once logged in, `/resume-db` is your master resume database: basic info, sections (experience-style entries with bullets, or skill categories), all with drag-drop reordering, a "must include" flag, and per-item LaTeX you can either let auto-generate from the form fields or override by hand.
+
 ## Scripts
 
 | Command | Description |

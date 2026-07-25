@@ -45,7 +45,7 @@ export function LoginForm() {
         error={fieldErrors.password}
       />
       <FormError message={error} />
-      <Button type="submit" loading={loading}>
+      <Button type="submit" className="w-full" loading={loading}>
         Log in
       </Button>
     </form>
