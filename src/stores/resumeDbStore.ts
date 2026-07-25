@@ -26,6 +26,8 @@ import {
   generateSkillRowLatex,
 } from '../lib/template/generateDefaultLatex'
 import { JAKES_RESUME_TEMPLATE } from '../lib/template/jakesResumeTemplate'
+import { getSemanticTextProvider } from '../lib/semantic/ruleBasedProvider'
+import { computeSemanticFields } from '../lib/semantic/computeSemanticFields'
 
 const EMPTY_BASIC_INFO: BasicInfo = {
   fields: { name: '', email: '', phone: '', location: '', links: [] },
@@ -33,12 +35,7 @@ const EMPTY_BASIC_INFO: BasicInfo = {
   isLatexOverridden: false,
 }
 
-const SEMANTIC_DEFAULTS = {
-  semanticText: '',
-  semanticTextHash: '',
-  embedding: null as number[] | null,
-  mustInclude: true,
-}
+const DEFAULT_MUST_INCLUDE = true
 
 function nextOrder(items: { order: number }[]): number {
   return items.length === 0 ? 0 : Math.max(...items.map((item) => item.order)) + 1
@@ -150,11 +147,20 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
   async addSection(displayName, sectionType) {
     const uid = get().uid
     if (!uid) return
+    const latex = generateSectionLatex(displayName)
+    const semanticText = await getSemanticTextProvider().generateSectionOrBulletSemanticText(latex)
+    const semantic = await computeSemanticFields({
+      uid,
+      semanticText,
+      existingSemanticTextHash: '',
+      existingEmbedding: null,
+    })
     await createResumeDbDoc(uid, 'sections', {
       displayName,
-      latex: generateSectionLatex(displayName),
+      latex,
       isLatexOverridden: false,
-      ...SEMANTIC_DEFAULTS,
+      ...semantic,
+      mustInclude: DEFAULT_MUST_INCLUDE,
       order: nextOrder(get().sections),
       sectionType,
     })
@@ -165,7 +171,20 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     if (!uid) return
     const data: Record<string, unknown> = {}
     if (patch.fields) data.displayName = patch.fields.displayName
-    if (patch.latex !== undefined) data.latex = patch.latex
+    if (patch.latex !== undefined) {
+      data.latex = patch.latex
+      const existing = get().sections.find((section) => section.id === id)
+      const semanticText = await getSemanticTextProvider().generateSectionOrBulletSemanticText(patch.latex)
+      Object.assign(
+        data,
+        await computeSemanticFields({
+          uid,
+          semanticText,
+          existingSemanticTextHash: existing?.semanticTextHash ?? '',
+          existingEmbedding: existing?.embedding ?? null,
+        }),
+      )
+    }
     if (patch.isLatexOverridden !== undefined) data.isLatexOverridden = patch.isLatexOverridden
     await updateResumeDbDoc(uid, 'sections', id, data)
   },
@@ -199,12 +218,20 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     const uid = get().uid
     if (!uid) return
     const siblingEntries = get().entries.filter((entry) => entry.sectionId === sectionId)
+    const semanticText = await getSemanticTextProvider().generateEntrySemanticText(fields, [])
+    const semantic = await computeSemanticFields({
+      uid,
+      semanticText,
+      existingSemanticTextHash: '',
+      existingEmbedding: null,
+    })
     await createResumeDbDoc(uid, 'entries', {
       sectionId,
       fields,
       latex: generateEntryLatex(fields, JAKES_RESUME_TEMPLATE),
       isLatexOverridden: false,
-      ...SEMANTIC_DEFAULTS,
+      ...semantic,
+      mustInclude: DEFAULT_MUST_INCLUDE,
       order: nextOrder(siblingEntries),
     })
   },
@@ -213,7 +240,25 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     const uid = get().uid
     if (!uid) return
     const data: Record<string, unknown> = {}
-    if (patch.fields) data.fields = patch.fields
+    if (patch.fields) {
+      data.fields = patch.fields
+      const existing = get().entries.find((entry) => entry.id === id)
+      // Snapshot of sibling bullets as of *this* save — editing a bullet afterward
+      // without re-saving the entry won't retroactively refresh this text.
+      const bulletTexts = get()
+        .bullets.filter((bullet) => bullet.entryId === id)
+        .map((bullet) => bullet.text)
+      const semanticText = await getSemanticTextProvider().generateEntrySemanticText(patch.fields, bulletTexts)
+      Object.assign(
+        data,
+        await computeSemanticFields({
+          uid,
+          semanticText,
+          existingSemanticTextHash: existing?.semanticTextHash ?? '',
+          existingEmbedding: existing?.embedding ?? null,
+        }),
+      )
+    }
     if (patch.latex !== undefined) data.latex = patch.latex
     if (patch.isLatexOverridden !== undefined) data.isLatexOverridden = patch.isLatexOverridden
     await updateResumeDbDoc(uid, 'entries', id, data)
@@ -239,13 +284,22 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     const uid = get().uid
     if (!uid) return
     const siblingBullets = get().bullets.filter((bullet) => bullet.entryId === entryId)
+    const latex = generateBulletLatex(text, JAKES_RESUME_TEMPLATE)
+    const semanticText = await getSemanticTextProvider().generateSectionOrBulletSemanticText(latex)
+    const semantic = await computeSemanticFields({
+      uid,
+      semanticText,
+      existingSemanticTextHash: '',
+      existingEmbedding: null,
+    })
     await createResumeDbDoc(uid, 'bullets', {
       entryId,
       sectionId,
       text,
-      latex: generateBulletLatex(text, JAKES_RESUME_TEMPLATE),
+      latex,
       isLatexOverridden: false,
-      ...SEMANTIC_DEFAULTS,
+      ...semantic,
+      mustInclude: DEFAULT_MUST_INCLUDE,
       order: nextOrder(siblingBullets),
     })
   },
@@ -255,7 +309,20 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     if (!uid) return
     const data: Record<string, unknown> = {}
     if (patch.fields) data.text = patch.fields.text
-    if (patch.latex !== undefined) data.latex = patch.latex
+    if (patch.latex !== undefined) {
+      data.latex = patch.latex
+      const existing = get().bullets.find((bullet) => bullet.id === id)
+      const semanticText = await getSemanticTextProvider().generateSectionOrBulletSemanticText(patch.latex)
+      Object.assign(
+        data,
+        await computeSemanticFields({
+          uid,
+          semanticText,
+          existingSemanticTextHash: existing?.semanticTextHash ?? '',
+          existingEmbedding: existing?.embedding ?? null,
+        }),
+      )
+    }
     if (patch.isLatexOverridden !== undefined) data.isLatexOverridden = patch.isLatexOverridden
     await updateResumeDbDoc(uid, 'bullets', id, data)
   },
@@ -315,10 +382,18 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     const uid = get().uid
     if (!uid) return
     const siblingSkills = get().skills.filter((skill) => skill.skillRowId === skillRowId)
+    const semanticText = await getSemanticTextProvider().generateSkillSemanticText(displayName)
+    const semantic = await computeSemanticFields({
+      uid,
+      semanticText,
+      existingSemanticTextHash: '',
+      existingEmbedding: null,
+    })
     await createResumeDbDoc(uid, 'skills', {
       skillRowId,
       displayName,
-      ...SEMANTIC_DEFAULTS,
+      ...semantic,
+      mustInclude: DEFAULT_MUST_INCLUDE,
       order: nextOrder(siblingSkills),
     })
   },
@@ -326,7 +401,15 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
   async updateSkill(id, displayName) {
     const uid = get().uid
     if (!uid) return
-    await updateResumeDbDoc(uid, 'skills', id, { displayName })
+    const existing = get().skills.find((skill) => skill.id === id)
+    const semanticText = await getSemanticTextProvider().generateSkillSemanticText(displayName)
+    const semantic = await computeSemanticFields({
+      uid,
+      semanticText,
+      existingSemanticTextHash: existing?.semanticTextHash ?? '',
+      existingEmbedding: existing?.embedding ?? null,
+    })
+    await updateResumeDbDoc(uid, 'skills', id, { displayName, ...semantic })
   },
 
   async deleteSkill(id) {

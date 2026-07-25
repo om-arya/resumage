@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react'
 import { useSyncedState } from './useSyncedState'
 import { useRegisteredFlush } from './useRegisteredFlush'
 import { usePendingChangesStore } from '../stores/pendingChangesStore'
+import { validateLatex } from '../lib/template/validateLatex'
 
 export interface DraftEntityPatch<TFields> {
   fields: TFields
@@ -79,6 +80,12 @@ export function useDraftEntity<TFields>({
       const generated = generateLatex(fields)
       const finalLatex = manualLatexDraft ?? generated
       const finalIsOverridden = manualLatexDraft !== null && manualLatexDraft.trim() !== generated.trim()
+      // Defense in depth beyond LatexOverrideSection's inline warning — invalid
+      // LaTeX must never reach Firestore, even if the user saves without noticing it.
+      const errors = validateLatex(finalLatex)
+      if (errors.length > 0) {
+        throw new Error(`Invalid LaTeX: ${errors.join('; ')}`)
+      }
       await onFlush({ fields, latex: finalLatex, isLatexOverridden: finalIsOverridden })
     }, [fields, manualLatexDraft, generateLatex, onFlush]),
   )

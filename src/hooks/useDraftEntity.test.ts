@@ -150,4 +150,27 @@ describe('useDraftEntity', () => {
       isLatexOverridden: true,
     })
   })
+
+  it('rejects the flush and never calls onFlush when the draft LaTeX is invalid', async () => {
+    const onFlush = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() =>
+      useDraftEntity<Fields>({
+        key: 'bullets:1',
+        fields: { text: 'hello' },
+        latex: '\\item{hello}',
+        isLatexOverridden: false,
+        generateLatex,
+        onFlush,
+      }),
+    )
+
+    act(() => result.current.setLatex('\\textbf{unclosed'))
+
+    await act(async () => {
+      await expect(usePendingChangesStore.getState().saveAll()).rejects.toThrow(/Invalid LaTeX/)
+    })
+
+    expect(onFlush).not.toHaveBeenCalled()
+    expect(usePendingChangesStore.getState().dirtyKeys.has('bullets:1')).toBe(true)
+  })
 })
