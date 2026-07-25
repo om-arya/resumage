@@ -3,9 +3,9 @@ import { useShallow } from 'zustand/react/shallow'
 import { Button } from '../common/Button'
 import { Input } from '../common/Input'
 import { useResumeDbStore } from '../../stores/resumeDbStore'
+import { useTemplatesStore, selectActiveTemplate } from '../../stores/templatesStore'
 import { useDraftEntity } from '../../hooks/useDraftEntity'
 import { generateSkillRowLatex } from '../../lib/template/generateDefaultLatex'
-import { JAKES_RESUME_TEMPLATE } from '../../lib/template/jakesResumeTemplate'
 import { LatexOverrideSection } from './LatexOverrideSection'
 import { SortableItem } from './SortableItem'
 import { SortableList } from './SortableList'
@@ -24,6 +24,7 @@ export function SkillRowCard({ skillRow }: SkillRowCardProps) {
   const deleteSkillRow = useResumeDbStore((state) => state.deleteSkillRow)
   const addSkill = useResumeDbStore((state) => state.addSkill)
   const reorderSkills = useResumeDbStore((state) => state.reorderSkills)
+  const activeTemplate = useTemplatesStore(selectActiveTemplate)
   const [newSkillName, setNewSkillName] = useState('')
 
   const { fields, updateFields, latex, isLatexOverridden, setLatex, revertToAutoLatex } = useDraftEntity(
@@ -32,7 +33,7 @@ export function SkillRowCard({ skillRow }: SkillRowCardProps) {
       fields: { categoryName: skillRow.categoryName },
       latex: skillRow.latex,
       isLatexOverridden: skillRow.isLatexOverridden,
-      generateLatex: (f) => generateSkillRowLatex(f.categoryName, JAKES_RESUME_TEMPLATE),
+      generateLatex: (f) => generateSkillRowLatex(f.categoryName, activeTemplate),
       onFlush: (patch) => updateSkillRow(skillRow.id, patch),
     },
   )

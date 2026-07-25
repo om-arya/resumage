@@ -4,9 +4,9 @@ import { twMerge } from 'tailwind-merge'
 import { Button } from '../common/Button'
 import { Input } from '../common/Input'
 import { useResumeDbStore } from '../../stores/resumeDbStore'
+import { useTemplatesStore, selectActiveTemplate } from '../../stores/templatesStore'
 import { useDraftEntity } from '../../hooks/useDraftEntity'
 import { generateEntryLatex } from '../../lib/template/generateDefaultLatex'
-import { JAKES_RESUME_TEMPLATE } from '../../lib/template/jakesResumeTemplate'
 import { LatexOverrideSection } from './LatexOverrideSection'
 import { MustIncludeToggle } from './MustIncludeToggle'
 import { SortableItem } from './SortableItem'
@@ -27,6 +27,7 @@ export function EntryCard({ entry }: EntryCardProps) {
   const setMustInclude = useResumeDbStore((state) => state.setMustInclude)
   const addBullet = useResumeDbStore((state) => state.addBullet)
   const reorderBullets = useResumeDbStore((state) => state.reorderBullets)
+  const activeTemplate = useTemplatesStore(selectActiveTemplate)
   const [newBulletText, setNewBulletText] = useState('')
   // Entries that already have a title start collapsed; a freshly-added blank one starts open.
   const [collapsed, setCollapsed] = useState(() => Boolean(entry.fields.title))
@@ -37,7 +38,7 @@ export function EntryCard({ entry }: EntryCardProps) {
       fields: entry.fields,
       latex: entry.latex,
       isLatexOverridden: entry.isLatexOverridden,
-      generateLatex: (f) => generateEntryLatex(f, JAKES_RESUME_TEMPLATE),
+      generateLatex: (f) => generateEntryLatex(f, activeTemplate),
       onFlush: (patch) => updateEntry(entry.id, patch),
     })
 

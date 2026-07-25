@@ -19,6 +19,9 @@ export function Navbar() {
             <Link to="/resume-db" className="hover:text-slate-900">
               Resume database
             </Link>
+            <Link to="/templates" className="hover:text-slate-900">
+              Templates
+            </Link>
           </nav>
         ) : null}
       </div>

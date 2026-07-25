@@ -25,7 +25,7 @@ import {
   generateSectionLatex,
   generateSkillRowLatex,
 } from '../lib/template/generateDefaultLatex'
-import { JAKES_RESUME_TEMPLATE } from '../lib/template/jakesResumeTemplate'
+import { getActiveTemplate } from './templatesStore'
 import { getSemanticTextProvider } from '../lib/semantic/ruleBasedProvider'
 import { computeSemanticFields } from '../lib/semantic/computeSemanticFields'
 
@@ -228,7 +228,7 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     await createResumeDbDoc(uid, 'entries', {
       sectionId,
       fields,
-      latex: generateEntryLatex(fields, JAKES_RESUME_TEMPLATE),
+      latex: generateEntryLatex(fields, getActiveTemplate()),
       isLatexOverridden: false,
       ...semantic,
       mustInclude: DEFAULT_MUST_INCLUDE,
@@ -284,7 +284,7 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     const uid = get().uid
     if (!uid) return
     const siblingBullets = get().bullets.filter((bullet) => bullet.entryId === entryId)
-    const latex = generateBulletLatex(text, JAKES_RESUME_TEMPLATE)
+    const latex = generateBulletLatex(text, getActiveTemplate())
     const semanticText = await getSemanticTextProvider().generateSectionOrBulletSemanticText(latex)
     const semantic = await computeSemanticFields({
       uid,
@@ -346,7 +346,7 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     await createResumeDbDoc(uid, 'skillRows', {
       sectionId,
       categoryName,
-      latex: generateSkillRowLatex(categoryName, JAKES_RESUME_TEMPLATE),
+      latex: generateSkillRowLatex(categoryName, getActiveTemplate()),
       isLatexOverridden: false,
       order: nextOrder(siblingRows),
     })

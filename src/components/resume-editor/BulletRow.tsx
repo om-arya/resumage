@@ -1,8 +1,8 @@
 import { twMerge } from 'tailwind-merge'
 import { useResumeDbStore } from '../../stores/resumeDbStore'
+import { useTemplatesStore, selectActiveTemplate } from '../../stores/templatesStore'
 import { useDraftEntity } from '../../hooks/useDraftEntity'
 import { generateBulletLatex } from '../../lib/template/generateDefaultLatex'
-import { JAKES_RESUME_TEMPLATE } from '../../lib/template/jakesResumeTemplate'
 import { LatexOverrideSection } from './LatexOverrideSection'
 import { MustIncludeToggle } from './MustIncludeToggle'
 import type { Bullet } from '../../types/resumeDb'
@@ -15,6 +15,7 @@ export function BulletRow({ bullet }: BulletRowProps) {
   const updateBullet = useResumeDbStore((state) => state.updateBullet)
   const deleteBullet = useResumeDbStore((state) => state.deleteBullet)
   const setMustInclude = useResumeDbStore((state) => state.setMustInclude)
+  const activeTemplate = useTemplatesStore(selectActiveTemplate)
 
   const { fields, updateFields, latex, isLatexOverridden, setLatex, revertToAutoLatex } = useDraftEntity(
     {
@@ -22,7 +23,7 @@ export function BulletRow({ bullet }: BulletRowProps) {
       fields: { text: bullet.text },
       latex: bullet.latex,
       isLatexOverridden: bullet.isLatexOverridden,
-      generateLatex: (f) => generateBulletLatex(f.text, JAKES_RESUME_TEMPLATE),
+      generateLatex: (f) => generateBulletLatex(f.text, activeTemplate),
       onFlush: (patch) => updateBullet(bullet.id, patch),
     },
   )

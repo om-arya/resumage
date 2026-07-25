@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useAuthStore } from '../stores/authStore'
 import { useResumeDbStore } from '../stores/resumeDbStore'
+import { useTemplatesStore } from '../stores/templatesStore'
 import { usePendingChangesStore } from '../stores/pendingChangesStore'
 import { Spinner } from '../components/common/Spinner'
 import { Button } from '../components/common/Button'
@@ -12,6 +13,8 @@ export function ResumeEditorPage() {
   const loading = useResumeDbStore((state) => state.loading)
   const subscribe = useResumeDbStore((state) => state.subscribe)
   const unsubscribeAll = useResumeDbStore((state) => state.unsubscribeAll)
+  const subscribeTemplates = useTemplatesStore((state) => state.subscribe)
+  const unsubscribeTemplates = useTemplatesStore((state) => state.unsubscribeAll)
   const isDirty = usePendingChangesStore((state) => state.isDirty)
   const isSaving = usePendingChangesStore((state) => state.isSaving)
   const error = usePendingChangesStore((state) => state.error)
@@ -22,6 +25,12 @@ export function ResumeEditorPage() {
     subscribe(user.uid)
     return () => unsubscribeAll()
   }, [user, subscribe, unsubscribeAll])
+
+  useEffect(() => {
+    if (!user) return
+    subscribeTemplates(user.uid)
+    return () => unsubscribeTemplates()
+  }, [user, subscribeTemplates, unsubscribeTemplates])
 
   useEffect(() => {
     if (!isDirty) return

@@ -1,9 +1,9 @@
 import { Button } from '../common/Button'
 import { Input } from '../common/Input'
 import { useResumeDbStore } from '../../stores/resumeDbStore'
+import { useTemplatesStore, selectActiveTemplate } from '../../stores/templatesStore'
 import { useDraftEntity } from '../../hooks/useDraftEntity'
 import { generateBasicInfoLatex } from '../../lib/template/generateDefaultLatex'
-import { JAKES_RESUME_TEMPLATE } from '../../lib/template/jakesResumeTemplate'
 import { LatexOverrideSection } from './LatexOverrideSection'
 import type { BasicInfoFields } from '../../types/resumeDb'
 
@@ -12,6 +12,7 @@ const EMPTY_FIELDS: BasicInfoFields = { name: '', email: '', phone: '', location
 export function BasicInfoEditor() {
   const basicInfo = useResumeDbStore((state) => state.basicInfo)
   const saveBasicInfo = useResumeDbStore((state) => state.saveBasicInfo)
+  const activeTemplate = useTemplatesStore(selectActiveTemplate)
 
   const { fields, updateFields, latex, isLatexOverridden, setLatex, revertToAutoLatex } = useDraftEntity(
     {
@@ -19,7 +20,7 @@ export function BasicInfoEditor() {
       fields: basicInfo?.fields ?? EMPTY_FIELDS,
       latex: basicInfo?.latex ?? '',
       isLatexOverridden: basicInfo?.isLatexOverridden ?? false,
-      generateLatex: (f) => generateBasicInfoLatex(f, JAKES_RESUME_TEMPLATE),
+      generateLatex: (f) => generateBasicInfoLatex(f, activeTemplate),
       onFlush: saveBasicInfo,
     },
   )

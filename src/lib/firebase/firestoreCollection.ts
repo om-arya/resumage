@@ -4,6 +4,8 @@ import {
   deleteDoc as fsDeleteDoc,
   updateDoc as fsUpdateDoc,
   doc,
+  getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -16,7 +18,14 @@ import {
 import { db } from './config'
 import type { BasicInfo } from '../../types/resumeDb'
 
-export const RESUME_DB_COLLECTIONS = ['sections', 'entries', 'bullets', 'skillRows', 'skills'] as const
+export const RESUME_DB_COLLECTIONS = [
+  'sections',
+  'entries',
+  'bullets',
+  'skillRows',
+  'skills',
+  'templates',
+] as const
 export type ResumeDbCollectionName = (typeof RESUME_DB_COLLECTIONS)[number]
 
 function collectionRef(uid: string, name: ResumeDbCollectionName) {
@@ -37,6 +46,12 @@ export function subscribeToResumeDbCollection<T extends { id: string }>(
   return onSnapshot(q, (snapshot) => {
     onChange(snapshot.docs.map((docSnap) => fromSnapshot<T>(docSnap)))
   })
+}
+
+/** One-shot emptiness check (no live listener) — used to decide whether to seed default data. */
+export async function resumeDbCollectionIsEmpty(uid: string, name: ResumeDbCollectionName): Promise<boolean> {
+  const snapshot = await getDocs(query(collectionRef(uid, name), limit(1)))
+  return snapshot.empty
 }
 
 export async function createResumeDbDoc(
@@ -95,4 +110,18 @@ export function subscribeToBasicInfo(
 
 export function saveBasicInfo(uid: string, basicInfo: BasicInfo): Promise<void> {
   return setDoc(doc(db, 'users', uid), { basicInfo }, { merge: true })
+}
+
+/** Which of the user's templates (users/{uid}/templates) is currently active — also embedded on the user doc. */
+export function subscribeToActiveTemplateId(
+  uid: string,
+  onChange: (templateId: string | null) => void,
+): () => void {
+  return onSnapshot(doc(db, 'users', uid), (snap) => {
+    onChange((snap.data()?.activeTemplateId as string | undefined) ?? null)
+  })
+}
+
+export function setActiveTemplateId(uid: string, templateId: string): Promise<void> {
+  return setDoc(doc(db, 'users', uid), { activeTemplateId: templateId }, { merge: true })
 }
