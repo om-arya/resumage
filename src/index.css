@@ -1,1 +1,18 @@
 @import 'tailwindcss';
+
+/* A newly-mounted list row (e.g. the next item sliding into a "recent N" list
+   after one above it is deleted) eases in instead of just popping into place. */
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-slide-in {
+  animation: fade-slide-in 0.3s ease-out;
+}

@@ -15,7 +15,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { db } from './config'
-import type { BasicInfo, GenerationSettings } from '../../types/resumeDb'
+import type { BasicInfo, GeneratedResume, GenerationSettings } from '../../types/resumeDb'
 
 export const RESUME_DB_COLLECTIONS = [
   'sections',
@@ -61,6 +61,18 @@ export async function getResumeDbCollectionDocs<T extends { id: string }>(
 ): Promise<T[]> {
   const snapshot = await getDocs(collectionRef(uid, name))
   return snapshot.docs.map((docSnap) => fromSnapshot<T>(docSnap))
+}
+
+/** Live-subscribes to a user's most recent generated resumes, newest first — for the dashboard. */
+export function subscribeToRecentGeneratedResumes(
+  uid: string,
+  count: number,
+  onChange: (items: GeneratedResume[]) => void,
+): () => void {
+  const q = query(collectionRef(uid, 'generatedResumes'), orderBy('createdAt', 'desc'), limit(count))
+  return onSnapshot(q, (snapshot) => {
+    onChange(snapshot.docs.map((docSnap) => fromSnapshot<GeneratedResume>(docSnap)))
+  })
 }
 
 /** Mints a fresh doc id without writing anything — useful when the id must be known before the first write (e.g. a Storage path that embeds it). */
