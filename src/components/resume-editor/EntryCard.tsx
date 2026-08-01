@@ -40,12 +40,13 @@ export function EntryCard({ entry }: EntryCardProps) {
       isLatexOverridden: entry.isLatexOverridden,
       generateLatex: (f) => generateEntryLatex(f, activeTemplate),
       onFlush: (patch) => updateEntry(entry.id, patch),
+      tier: 1,
     })
 
-  async function handleAddBullet(event: FormEvent) {
+  function handleAddBullet(event: FormEvent) {
     event.preventDefault()
     if (!newBulletText.trim()) return
-    await addBullet(entry.id, entry.sectionId, newBulletText.trim())
+    addBullet(entry.id, entry.sectionId, newBulletText.trim())
     setNewBulletText('')
   }
 

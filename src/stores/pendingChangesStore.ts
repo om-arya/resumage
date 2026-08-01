@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 type FlushFn = () => Promise<void>
 
-const flushers = new Map<string, FlushFn>()
+const flushers = new Map<string, { flush: FlushFn; tier: number }>()
 
 interface PendingChangesState {
   dirtyKeys: Set<string>
@@ -14,8 +14,12 @@ interface PendingChangesState {
 interface PendingChangesActions {
   markDirty: (key: string) => void
   markClean: (key: string) => void
-  /** Registers the function that persists `key`'s current draft; returns an unregister callback. */
-  registerFlush: (key: string, flush: FlushFn) => () => void
+  /**
+   * Registers the function that persists `key`'s current draft; returns an
+   * unregister callback. `tier` controls save order (lower first, same tier
+   * runs in parallel) — see `FLUSH_TIER` for why the resume editor needs this.
+   */
+  registerFlush: (key: string, flush: FlushFn, tier?: number) => () => void
   saveAll: () => Promise<void>
 }
 
@@ -44,10 +48,10 @@ export const usePendingChangesStore = create<PendingChangesState & PendingChange
       })
     },
 
-    registerFlush(key, flush) {
-      flushers.set(key, flush)
+    registerFlush(key, flush, tier = 0) {
+      flushers.set(key, { flush, tier })
       return () => {
-        if (flushers.get(key) === flush) flushers.delete(key)
+        if (flushers.get(key)?.flush === flush) flushers.delete(key)
       }
     },
 
@@ -56,14 +60,24 @@ export const usePendingChangesStore = create<PendingChangesState & PendingChange
       if (keys.length === 0) return
       set({ isSaving: true, error: null })
       try {
-        await Promise.all(
-          keys.map(async (key) => {
-            const flush = flushers.get(key)
-            if (!flush) return
-            await flush()
-            get().markClean(key)
-          }),
-        )
+        const keysByTier = new Map<number, string[]>()
+        for (const key of keys) {
+          const tier = flushers.get(key)?.tier ?? 0
+          const tierKeys = keysByTier.get(tier) ?? []
+          tierKeys.push(key)
+          keysByTier.set(tier, tierKeys)
+        }
+        const tiers = Array.from(keysByTier.keys()).sort((a, b) => a - b)
+        for (const tier of tiers) {
+          await Promise.all(
+            keysByTier.get(tier)!.map(async (key) => {
+              const entry = flushers.get(key)
+              if (!entry) return
+              await entry.flush()
+              get().markClean(key)
+            }),
+          )
+        }
       } catch (err) {
         set({ error: err instanceof Error ? err.message : 'Failed to save changes.' })
         throw err

@@ -25,6 +25,7 @@ export function BulletRow({ bullet }: BulletRowProps) {
       isLatexOverridden: bullet.isLatexOverridden,
       generateLatex: (f) => generateBulletLatex(f.text, activeTemplate),
       onFlush: (patch) => updateBullet(bullet.id, patch),
+      tier: 2,
     },
   )
 

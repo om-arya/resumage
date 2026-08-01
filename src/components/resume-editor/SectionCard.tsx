@@ -42,14 +42,15 @@ export function SectionCard({ section }: SectionCardProps) {
       isLatexOverridden: section.isLatexOverridden,
       generateLatex: (f) => generateSectionLatex(f.displayName),
       onFlush: (patch) => updateSection(section.id, patch),
+      tier: 0,
     },
   )
 
-  async function handleAddItem(event: FormEvent) {
+  function handleAddItem(event: FormEvent) {
     event.preventDefault()
     if (!newItemName.trim()) return
     if (section.sectionType === 'entries') {
-      await addEntry(section.id, {
+      addEntry(section.id, {
         title: newItemName.trim(),
         organization: '',
         startDate: '',
@@ -57,7 +58,7 @@ export function SectionCard({ section }: SectionCardProps) {
         location: '',
       })
     } else {
-      await addSkillRow(section.id, newItemName.trim())
+      addSkillRow(section.id, newItemName.trim())
     }
     setNewItemName('')
   }

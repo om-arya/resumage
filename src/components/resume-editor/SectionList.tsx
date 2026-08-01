@@ -13,10 +13,10 @@ export function SectionList() {
   const [newSectionName, setNewSectionName] = useState('')
   const [newSectionType, setNewSectionType] = useState<SectionType>('entries')
 
-  async function handleAddSection(event: FormEvent) {
+  function handleAddSection(event: FormEvent) {
     event.preventDefault()
     if (!newSectionName.trim()) return
-    await addSection(newSectionName.trim(), newSectionType)
+    addSection(newSectionName.trim(), newSectionType)
     setNewSectionName('')
   }
 

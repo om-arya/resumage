@@ -20,11 +20,8 @@ export function SkillChip({ skill }: SkillChipProps) {
   const key = `skills:${skill.id}`
   useRegisteredFlush(
     key,
-    useCallback(async () => {
-      if (displayName.trim() && displayName !== skill.displayName) {
-        await updateSkill(skill.id, displayName.trim())
-      }
-    }, [displayName, skill.id, skill.displayName, updateSkill]),
+    useCallback(() => updateSkill(skill.id, displayName), [displayName, skill.id, updateSkill]),
+    2,
   )
 
   return (

@@ -11,7 +11,6 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
@@ -76,7 +75,7 @@ export function setResumeDbDoc(
   id: string,
   data: Record<string, unknown>,
 ): Promise<void> {
-  return setDoc(doc(db, 'users', uid, name, id), { ...data, createdAt: serverTimestamp() })
+  return setDoc(doc(db, 'users', uid, name, id), { ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
 }
 
 export async function createResumeDbDoc(
@@ -107,19 +106,6 @@ export function deleteResumeDbDoc(
   id: string,
 ): Promise<void> {
   return fsDeleteDoc(doc(db, 'users', uid, name, id))
-}
-
-/** Batched reorder: writes a fresh 0-based `order` to every doc in `orderedIds`. */
-export async function reorderResumeDbDocs(
-  uid: string,
-  name: ResumeDbCollectionName,
-  orderedIds: string[],
-): Promise<void> {
-  const batch = writeBatch(db)
-  orderedIds.forEach((id, index) => {
-    batch.update(doc(db, 'users', uid, name, id), { order: index, updatedAt: serverTimestamp() })
-  })
-  await batch.commit()
 }
 
 /** BasicInfo is embedded directly on the users/{uid} doc, not a subcollection. */

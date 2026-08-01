@@ -19,6 +19,8 @@ interface UseDraftEntityOptions<TFields> {
   isFieldsEqual?: (a: TFields, b: TFields) => boolean
   generateLatex: (fields: TFields) => string
   onFlush: (patch: DraftEntityPatch<TFields>) => Promise<void>
+  /** Save order — see `FLUSH_TIER`. Defaults to 0 (no parent dependency). */
+  tier?: number
 }
 
 /**
@@ -40,6 +42,7 @@ export function useDraftEntity<TFields>({
   isFieldsEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b),
   generateLatex,
   onFlush,
+  tier = 0,
 }: UseDraftEntityOptions<TFields>) {
   const [fields, setFields] = useSyncedState(persistedFields, isFieldsEqual)
   // null = "follow the fields"; a string = a manually-typed LaTeX draft.
@@ -88,6 +91,7 @@ export function useDraftEntity<TFields>({
       }
       await onFlush({ fields, latex: finalLatex, isLatexOverridden: finalIsOverridden })
     }, [fields, manualLatexDraft, generateLatex, onFlush]),
+    tier,
   )
 
   return { fields, updateFields, latex, isLatexOverridden, setLatex, revertToAutoLatex }

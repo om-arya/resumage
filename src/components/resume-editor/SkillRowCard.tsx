@@ -35,13 +35,14 @@ export function SkillRowCard({ skillRow }: SkillRowCardProps) {
       isLatexOverridden: skillRow.isLatexOverridden,
       generateLatex: (f) => generateSkillRowLatex(f.categoryName, activeTemplate),
       onFlush: (patch) => updateSkillRow(skillRow.id, patch),
+      tier: 1,
     },
   )
 
-  async function handleAddSkill(event: FormEvent) {
+  function handleAddSkill(event: FormEvent) {
     event.preventDefault()
     if (!newSkillName.trim()) return
-    await addSkill(skillRow.id, newSkillName.trim())
+    addSkill(skillRow.id, newSkillName.trim())
     setNewSkillName('')
   }
 
