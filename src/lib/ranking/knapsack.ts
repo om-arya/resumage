@@ -2,7 +2,7 @@ import { renderTemplate, type RenderTemplateData } from '../template/renderTempl
 import { estimatePageCount } from './estimatePageCount'
 import { computeRelevanceScore } from './scoreItem'
 import type { ResumeTemplate } from '../../types/template'
-import type { BasicInfo, Bullet, Entry, Section, Skill, SkillRow } from '../../types/resumeDb'
+import type { BasicInfo, Bullet, Entry, Section, SectionOrderMode, Skill, SkillRow } from '../../types/resumeDb'
 
 export interface IncludedItemIds {
   sections: string[]
@@ -85,6 +85,56 @@ export function pruneEmptySections(
   })
 
   return { ...includedItemIds, sections: keptSectionIds.filter((id) => includedSectionIds.has(id)) }
+}
+
+/** Average relevance score of a section's *included* children — used only to rank aiOptimized section order, never inclusion. */
+export function computeSectionScore(
+  section: Section,
+  includedItemIds: IncludedItemIds,
+  data: { entries: Entry[]; skillRows: SkillRow[]; skills: Skill[] },
+  scoreBreakdown: Record<string, number>,
+): number {
+  const scores =
+    section.sectionType === 'entries'
+      ? data.entries
+          .filter((entry) => entry.sectionId === section.id && includedItemIds.entries.includes(entry.id))
+          .map((entry) => scoreBreakdown[entry.id] ?? 0)
+      : data.skills
+          .filter(
+            (skill) =>
+              includedItemIds.skills.includes(skill.id) &&
+              data.skillRows.some((row) => row.id === skill.skillRowId && row.sectionId === section.id),
+          )
+          .map((skill) => scoreBreakdown[skill.id] ?? 0)
+  if (scores.length === 0) return 0
+  return scores.reduce((sum, score) => sum + score, 0) / scores.length
+}
+
+/**
+ * Returns `sections` re-indexed for rendering: unchanged in 'fixed' mode
+ * (renderTemplate.ts sorts by each section's stored `order`, so the original
+ * chronological order comes through untouched), or resequenced by descending
+ * relevance score in 'aiOptimized' mode. Only the *returned* copies' `order`
+ * changes — the underlying stored Section.order is never mutated, and entries/
+ * bullets within a section are never reordered either way (same rationale as
+ * `fitToPageConstraints`: content order shouldn't reshuffle based on JD match,
+ * but which section leads is a reasonable thing to optimize).
+ */
+export function orderSectionsForRender(
+  sections: Section[],
+  mode: SectionOrderMode,
+  includedItemIds: IncludedItemIds,
+  data: { entries: Entry[]; skillRows: SkillRow[]; skills: Skill[] },
+  scoreBreakdown: Record<string, number>,
+): Section[] {
+  if (mode === 'fixed') return sections
+  return [...sections]
+    .sort(
+      (a, b) =>
+        computeSectionScore(b, includedItemIds, data, scoreBreakdown) -
+        computeSectionScore(a, includedItemIds, data, scoreBreakdown),
+    )
+    .map((section, index) => ({ ...section, order: index }))
 }
 
 export interface FitToPageConstraintsInput {

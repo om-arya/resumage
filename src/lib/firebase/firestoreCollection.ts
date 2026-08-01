@@ -15,7 +15,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { db } from './config'
-import type { BasicInfo } from '../../types/resumeDb'
+import type { BasicInfo, GenerationSettings } from '../../types/resumeDb'
 
 export const RESUME_DB_COLLECTIONS = [
   'sections',
@@ -135,4 +135,21 @@ export function subscribeToActiveTemplateId(
 
 export function setActiveTemplateId(uid: string, templateId: string): Promise<void> {
   return setDoc(doc(db, 'users', uid), { activeTemplateId: templateId }, { merge: true })
+}
+
+/** Page-constraint/section-order generation defaults (Milestone 6) — also embedded on the user doc. */
+export function subscribeToGenerationSettings(
+  uid: string,
+  onChange: (settings: GenerationSettings | null) => void,
+): () => void {
+  return onSnapshot(doc(db, 'users', uid), (snap) => {
+    const data = snap.data()
+    const pageConstraints = data?.pageConstraints as GenerationSettings['pageConstraints'] | undefined
+    const sectionOrderMode = data?.sectionOrderMode as GenerationSettings['sectionOrderMode'] | undefined
+    onChange(pageConstraints && sectionOrderMode ? { pageConstraints, sectionOrderMode } : null)
+  })
+}
+
+export function saveGenerationSettings(uid: string, settings: GenerationSettings): Promise<void> {
+  return setDoc(doc(db, 'users', uid), settings, { merge: true })
 }

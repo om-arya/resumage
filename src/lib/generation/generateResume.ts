@@ -1,22 +1,19 @@
 import { normalizeWhitespace } from '../semantic/ruleBasedExtractor'
 import { hashText } from '../semantic/hashText'
 import { getOrComputeEmbedding } from '../ai/getOrComputeEmbedding'
-import { fitToPageConstraints, removeLowestScoringOptionalItem, pruneEmptySections } from '../ranking/knapsack'
+import {
+  fitToPageConstraints,
+  orderSectionsForRender,
+  removeLowestScoringOptionalItem,
+  pruneEmptySections,
+} from '../ranking/knapsack'
 import type { IncludedItemIds } from '../ranking/knapsack'
 import { renderTemplate, type RenderTemplateData } from '../template/renderTemplate'
 import { compileLatex } from '../firebase/functionsApi'
 import { newResumeDbDocId, setResumeDbDoc } from '../firebase/firestoreCollection'
+import { DEFAULT_GENERATION_SETTINGS } from './defaultSettings'
 import type { ResumeTemplate } from '../../types/template'
-import type { BasicInfo, Bullet, Entry, PageConstraints, Section, Skill, SkillRow } from '../../types/resumeDb'
-
-/** M6 owns the page-constraint settings UI; until then every generation targets a single page. */
-export const DEFAULT_PAGE_CONSTRAINTS: PageConstraints = {
-  minPages: 1,
-  maxPages: 1,
-  minTopMarginIn: 0.5,
-  maxTopMarginIn: 1,
-  sideMarginIn: 0.5,
-}
+import type { BasicInfo, Bullet, Entry, Section, SectionOrderMode, Skill, SkillRow } from '../../types/resumeDb'
 
 /** "Estimate, compile, and correct" — at most this many extra removal+recompile rounds if Tectonic disagrees with the heuristic. */
 const MAX_CORRECTION_ITERATIONS = 2
@@ -32,6 +29,8 @@ export interface GenerateResumeInput {
   skillRows: SkillRow[]
   skills: Skill[]
   maxPages?: number
+  minPages?: number
+  sectionOrderMode?: SectionOrderMode
 }
 
 export interface GenerateResumeResult {
@@ -43,10 +42,22 @@ export interface GenerateResumeResult {
   warnings?: string
 }
 
-function filterData(input: GenerateResumeInput, ids: IncludedItemIds): RenderTemplateData {
+function filterData(
+  input: GenerateResumeInput,
+  ids: IncludedItemIds,
+  sectionOrderMode: SectionOrderMode,
+  scoreBreakdown: Record<string, number>,
+): RenderTemplateData {
+  const filteredSections = input.sections.filter((section) => ids.sections.includes(section.id))
   return {
     basicInfo: input.basicInfo,
-    sections: input.sections.filter((section) => ids.sections.includes(section.id)),
+    sections: orderSectionsForRender(
+      filteredSections,
+      sectionOrderMode,
+      ids,
+      { entries: input.entries, skillRows: input.skillRows, skills: input.skills },
+      scoreBreakdown,
+    ),
     entries: input.entries.filter((entry) => ids.entries.includes(entry.id)),
     bullets: input.bullets.filter((bullet) => ids.bullets.includes(bullet.id)),
     skillRows: input.skillRows,
@@ -61,7 +72,11 @@ function filterData(input: GenerateResumeInput, ids: IncludedItemIds): RenderTem
  * page-count heuristic. Saves a GeneratedResume record on success.
  */
 export async function generateResume(input: GenerateResumeInput): Promise<GenerateResumeResult> {
-  const maxPages = input.maxPages ?? DEFAULT_PAGE_CONSTRAINTS.maxPages
+  const { pageConstraints: defaultPageConstraints, sectionOrderMode: defaultSectionOrderMode } =
+    DEFAULT_GENERATION_SETTINGS
+  const maxPages = input.maxPages ?? defaultPageConstraints.maxPages
+  const minPages = input.minPages ?? defaultPageConstraints.minPages
+  const sectionOrderMode = input.sectionOrderMode ?? defaultSectionOrderMode
   const jdSemanticText = normalizeWhitespace(input.jobDescriptionText)
   const jdHash = hashText(jdSemanticText)
 
@@ -92,7 +107,10 @@ export async function generateResume(input: GenerateResumeInput): Promise<Genera
 
   const resumeId = newResumeDbDocId(input.uid, 'generatedResumes')
   let includedItemIds = fit.includedItemIds
-  let generatedLatex = renderTemplate(input.template, filterData(input, includedItemIds))
+  let generatedLatex = renderTemplate(
+    input.template,
+    filterData(input, includedItemIds, sectionOrderMode, fit.scoreBreakdown),
+  )
   let compileResult = await compileLatex(generatedLatex, resumeId)
 
   for (let attempt = 0; attempt < MAX_CORRECTION_ITERATIONS && compileResult.pageCount > maxPages; attempt++) {
@@ -108,7 +126,10 @@ export async function generateResume(input: GenerateResumeInput): Promise<Genera
       skillRows: input.skillRows,
       skills: input.skills,
     })
-    generatedLatex = renderTemplate(input.template, filterData(input, includedItemIds))
+    generatedLatex = renderTemplate(
+      input.template,
+      filterData(input, includedItemIds, sectionOrderMode, fit.scoreBreakdown),
+    )
     compileResult = await compileLatex(generatedLatex, resumeId)
   }
 
@@ -116,7 +137,7 @@ export async function generateResume(input: GenerateResumeInput): Promise<Genera
     jobDescriptionText: input.jobDescriptionText,
     jdSemanticText,
     templateId: input.template.id,
-    sectionOrderMode: 'fixed',
+    sectionOrderMode,
     generatedLatex,
     pdfStoragePath: compileResult.pdfStoragePath,
     pageCount: compileResult.pageCount,
@@ -124,7 +145,13 @@ export async function generateResume(input: GenerateResumeInput): Promise<Genera
     scoreBreakdown: fit.scoreBreakdown,
   })
 
-  const warnings = [embeddingWarning, compileResult.warnings].filter(Boolean).join(' ') || undefined
+  const underMinPagesWarning =
+    compileResult.pageCount < minPages
+      ? `This resume is ${compileResult.pageCount} page${compileResult.pageCount === 1 ? '' : 's'}, under your target minimum of ${minPages}. Consider adding more content or marking more items as must-include.`
+      : undefined
+
+  const warnings =
+    [embeddingWarning, compileResult.warnings, underMinPagesWarning].filter(Boolean).join(' ') || undefined
 
   return {
     resumeId,

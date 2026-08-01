@@ -33,20 +33,19 @@ Browser (React SPA, Vite build, served via Firebase Hosting)
 Flat, top-level-under-user collections with FK fields, not deep subcollection chains:
 
 ```
-users/{uid}                          (basicInfo embedded, createdAt)
+users/{uid}                          (basicInfo, activeTemplateId, pageConstraints, sectionOrderMode — all embedded)
 users/{uid}/sections/{sectionId}
 users/{uid}/entries/{entryId}         // sectionId FK, order
 users/{uid}/bullets/{bulletId}        // entryId FK + denormalized sectionId, order
 users/{uid}/skillRows/{skillRowId}    // sectionId FK, order
 users/{uid}/skills/{skillId}          // skillRowId FK, order
 users/{uid}/templates/{templateId}
-users/{uid}/settings/pageConstraints  (singleton doc)
 users/{uid}/generatedResumes/{resumeId}
 ```
 
 The ranking pipeline must load a user's entire resume DB per generation run. Flat top-level-under-uid collections let that happen in one query per collection instead of N+1 nested reads or `collectionGroup` queries, and collapse Firestore security rules to one uniform wildcard rule (§9).
 
-TypeScript interfaces live at `src/types/resumeDb.ts` (Milestone 2): `BasicInfo`, `Section`, `Entry`, `Bullet`, `SkillRow`, `Skill`, `PageConstraints`, `GeneratedResume`.
+TypeScript interfaces live at `src/types/resumeDb.ts` (Milestone 2): `BasicInfo`, `Section`, `Entry`, `Bullet`, `SkillRow`, `Skill`, `PageConstraints`, `GenerationSettings`, `GeneratedResume`.
 
 ## 3. must-include + LaTeX-override state machine (Milestone 2)
 
@@ -65,13 +64,14 @@ Centralized in `src/hooks/useLatexOverridableEntity.ts`, consumed by every entit
 
 Provider abstraction (`src/lib/semantic/provider.ts`) so a future `ollamaProvider.ts` can replace the rule-based one without touching callers.
 
-## 5. Client-side embedding + ranking (Milestone 3/5)
+## 5. Client-side embedding + ranking (Milestone 3/5/6)
 
 - **Model loading**: `src/lib/ai/embeddingModel.ts` lazily loads `@xenova/transformers` (`Xenova/all-MiniLM-L6-v2`, WASM) on first use.
 - **Worker**: inference runs in `src/workers/embedding.worker.ts`.
 - **Cache**: computed once per save, stored in both the Firestore doc (`embedding`, `semanticTextHash`) and IndexedDB. Generation checks IndexedDB → Firestore field → recomputes only if the hash is stale.
-- **Pure functions**: `cosineSimilarity.ts`, `scoreItem.ts`, `knapsack.ts` (`fitToPageConstraints`, removal order: lowest-value bullets → entries → reorder → adjust top margin).
+- **Pure functions**: `cosineSimilarity.ts`, `scoreItem.ts`, `knapsack.ts` — `fitToPageConstraints` removes lowest-value bullets, then whole entries/skills, until `maxPages` fits; entry/bullet order within a section is never touched. `orderSectionsForRender` (Milestone 6) separately resequences *which section leads*, by average child relevance, only when `sectionOrderMode` is `aiOptimized` — a render-time reindex, the stored `Section.order` is untouched.
 - **10s-budget nuance**: `estimatePageCount` is a calibrated client-side heuristic used to converge quickly, followed by one real Tectonic compile to verify, plus at most 1–2 correction iterations if it disagrees.
+- **Settings** (Milestone 6): `PageConstraints`/`sectionOrderMode` are user-editable on `/settings`, embedded on the user doc (§2), read by `/generate` as the default `maxPages`/`minPages`/`sectionOrderMode` passed into `generateResume()`. Only `maxPages` and `sectionOrderMode` are wired into ranking; `minPages` drives a post-generation advisory warning rather than forcing extra content, and the margin fields exist on `PageConstraints` but aren't surfaced in the UI or used yet.
 
 ## 6. Template system (Milestone 4)
 
@@ -108,7 +108,7 @@ Parse-then-review, never a silent write: the parse is an in-memory draft; a chec
 - **M3 (done)** — Semantic extractor (§4) wired to every save; embeddings via Web Worker, cached in IndexedDB + Firestore, hash-gated. No ranking UI yet.
 - **M4 (done)** — Templates are real Firestore documents, not hardcoded; Jake's Resume auto-seeds and becomes active; `/templates` provides CRUD plus a live LaTeX-source preview editor.
 - **M5 (done)** — Generation pipeline: Cloud Functions `extractJdText`/`compileLatex` (§7, bundled Tectonic — deploying is a user-run step, needs the Blaze plan), deterministic ranking/knapsack (§5), `/generate` UI.
-- **M6** — PDF preview, LaTeX source viewer, section-order/page-constraint settings UI.
+- **M6 (done)** — PDF preview + LaTeX source viewer on `/generate`; `/settings` for page constraints and section order (§5), backing `aiOptimized` section reordering.
 - **M7** — Security hardening: field-level rules, rate limiting/App Check, function auth audit.
 - **M8** — Remaining test coverage (§12) + CI (GitHub Actions: lint/typecheck/unit, optional emulator integration job).
 - **M9** — Resume upload + auto-parse into the Resume DB (§10): review-before-import, no separate data path.

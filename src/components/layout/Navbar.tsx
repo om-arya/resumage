@@ -25,6 +25,9 @@ export function Navbar() {
             <Link to="/generate" className="hover:text-slate-900">
               Generate
             </Link>
+            <Link to="/settings" className="hover:text-slate-900">
+              Settings
+            </Link>
           </nav>
         ) : null}
       </div>

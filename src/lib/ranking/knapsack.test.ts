@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitToPageConstraints } from './knapsack'
+import { computeSectionScore, fitToPageConstraints, orderSectionsForRender } from './knapsack'
 import type { ResumeTemplate } from '../../types/template'
 import type { Bullet, Entry, Section, Skill, SkillRow } from '../../types/resumeDb'
 
@@ -263,5 +263,98 @@ describe('fitToPageConstraints', () => {
 
     expect(result.scoreBreakdown.b1).toBeCloseTo(1)
     expect(result.scoreBreakdown.e1).toBe(0)
+  })
+})
+
+describe('computeSectionScore', () => {
+  it('averages the scores of a section\'s included entries', () => {
+    const section = makeSection({ id: 's1', sectionType: 'entries' })
+    const entries = [makeEntry({ id: 'e1' }), makeEntry({ id: 'e2' })]
+    const includedItemIds = { sections: ['s1'], entries: ['e1', 'e2'], bullets: [], skills: [] }
+    const scoreBreakdown = { e1: 1, e2: 0.5 }
+
+    const score = computeSectionScore(section, includedItemIds, { entries, skillRows: [], skills: [] }, scoreBreakdown)
+
+    expect(score).toBeCloseTo(0.75)
+  })
+
+  it('ignores entries excluded from the current includedItemIds', () => {
+    const section = makeSection({ id: 's1', sectionType: 'entries' })
+    const entries = [makeEntry({ id: 'e1' }), makeEntry({ id: 'e2' })]
+    const includedItemIds = { sections: ['s1'], entries: ['e1'], bullets: [], skills: [] }
+    const scoreBreakdown = { e1: 1, e2: 0 }
+
+    const score = computeSectionScore(section, includedItemIds, { entries, skillRows: [], skills: [] }, scoreBreakdown)
+
+    expect(score).toBe(1)
+  })
+
+  it('scores a skills-type section from its skills, not entries', () => {
+    const section = makeSection({ id: 's1', sectionType: 'skills' })
+    const skillRows: SkillRow[] = [
+      { id: 'r1', sectionId: 's1', categoryName: 'Languages', latex: '', isLatexOverridden: false, order: 0, createdAt: TS, updatedAt: TS },
+    ]
+    const skills: Skill[] = [
+      { id: 'sk1', skillRowId: 'r1', displayName: 'TypeScript', semanticText: '', semanticTextHash: '', embedding: null, mustInclude: false, order: 0, createdAt: TS, updatedAt: TS },
+    ]
+    const includedItemIds = { sections: ['s1'], entries: [], bullets: [], skills: ['sk1'] }
+
+    const score = computeSectionScore(section, includedItemIds, { entries: [], skillRows, skills }, { sk1: 0.8 })
+
+    expect(score).toBe(0.8)
+  })
+
+  it('returns 0 for a section with no included content', () => {
+    const section = makeSection({ id: 's1', sectionType: 'entries' })
+    const includedItemIds = { sections: ['s1'], entries: [], bullets: [], skills: [] }
+
+    const score = computeSectionScore(section, includedItemIds, { entries: [], skillRows: [], skills: [] }, {})
+
+    expect(score).toBe(0)
+  })
+})
+
+describe('orderSectionsForRender', () => {
+  it("leaves the array untouched in 'fixed' mode", () => {
+    const sections = [makeSection({ id: 's-a', order: 0 }), makeSection({ id: 's-b', order: 1 })]
+
+    const result = orderSectionsForRender(
+      sections,
+      'fixed',
+      { sections: ['s-a', 's-b'], entries: [], bullets: [], skills: [] },
+      { entries: [], skillRows: [], skills: [] },
+      {},
+    )
+
+    expect(result).toBe(sections)
+  })
+
+  it("resequences by descending score in 'aiOptimized' mode, without mutating the stored order", () => {
+    const lowSection = makeSection({ id: 's-low', order: 0 })
+    const highSection = makeSection({ id: 's-high', order: 1 })
+    const lowEntry = makeEntry({ id: 'e-low', sectionId: 's-low' })
+    const highEntry = makeEntry({ id: 'e-high', sectionId: 's-high' })
+    const includedItemIds = {
+      sections: ['s-low', 's-high'],
+      entries: ['e-low', 'e-high'],
+      bullets: [],
+      skills: [],
+    }
+    const scoreBreakdown = { 'e-low': 0, 'e-high': 1 }
+
+    const result = orderSectionsForRender(
+      [lowSection, highSection],
+      'aiOptimized',
+      includedItemIds,
+      { entries: [lowEntry, highEntry], skillRows: [], skills: [] },
+      scoreBreakdown,
+    )
+
+    expect(result.map((s) => s.id)).toEqual(['s-high', 's-low'])
+    expect(result[0].order).toBe(0)
+    expect(result[1].order).toBe(1)
+    // The original Section objects passed in are untouched.
+    expect(lowSection.order).toBe(0)
+    expect(highSection.order).toBe(1)
   })
 })

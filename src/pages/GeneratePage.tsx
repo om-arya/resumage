@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useResumeDbStore } from '../stores/resumeDbStore'
 import { useTemplatesStore, selectActiveTemplate } from '../stores/templatesStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { Spinner } from '../components/common/Spinner'
 import { Button } from '../components/common/Button'
 import { FormError } from '../components/common/FormError'
@@ -13,6 +14,7 @@ import { extractJdText } from '../lib/firebase/functionsApi'
 interface GenerationResult {
   downloadUrl: string
   pageCount: number
+  generatedLatex: string
   warnings?: string
 }
 
@@ -24,6 +26,10 @@ export function GeneratePage() {
   const subscribeTemplates = useTemplatesStore((state) => state.subscribe)
   const unsubscribeTemplates = useTemplatesStore((state) => state.unsubscribeAll)
   const activeTemplate = useTemplatesStore(selectActiveTemplate)
+  const settingsLoading = useSettingsStore((state) => state.loading)
+  const settings = useSettingsStore((state) => state.settings)
+  const subscribeSettings = useSettingsStore((state) => state.subscribe)
+  const unsubscribeSettings = useSettingsStore((state) => state.unsubscribeAll)
 
   const basicInfo = useResumeDbStore((state) => state.basicInfo)
   const sections = useResumeDbStore((state) => state.sections)
@@ -37,6 +43,7 @@ export function GeneratePage() {
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<GenerationResult | null>(null)
+  const [showSource, setShowSource] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -49,6 +56,12 @@ export function GeneratePage() {
     subscribeTemplates(user.uid)
     return () => unsubscribeTemplates()
   }, [user, subscribeTemplates, unsubscribeTemplates])
+
+  useEffect(() => {
+    if (!user) return
+    subscribeSettings(user.uid)
+    return () => unsubscribeSettings()
+  }, [user, subscribeSettings, unsubscribeSettings])
 
   async function handleUploadPdf(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -72,6 +85,7 @@ export function GeneratePage() {
     if (!user || !jobDescriptionText.trim()) return
     setError(null)
     setResult(null)
+    setShowSource(false)
     setGenerating(true)
     try {
       const generation = await generateResume({
@@ -84,9 +98,17 @@ export function GeneratePage() {
         bullets,
         skillRows,
         skills,
+        maxPages: settings.pageConstraints.maxPages,
+        minPages: settings.pageConstraints.minPages,
+        sectionOrderMode: settings.sectionOrderMode,
       })
       const downloadUrl = await getPdfDownloadUrl(generation.pdfStoragePath)
-      setResult({ downloadUrl, pageCount: generation.pageCount, warnings: generation.warnings })
+      setResult({
+        downloadUrl,
+        pageCount: generation.pageCount,
+        generatedLatex: generation.generatedLatex,
+        warnings: generation.warnings,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate the resume.')
     } finally {
@@ -94,15 +116,23 @@ export function GeneratePage() {
     }
   }
 
-  if (loading) return <Spinner />
+  if (loading || settingsLoading) return <Spinner />
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8">
       <h1 className="text-2xl font-semibold text-slate-900">Generate a tailored resume</h1>
       <p className="text-sm text-slate-600">
-        Using <strong>{activeTemplate.name}</strong>. Change the active template on the{' '}
+        Using <strong>{activeTemplate.name}</strong> ({settings.pageConstraints.minPages}–
+        {settings.pageConstraints.maxPages} page
+        {settings.pageConstraints.maxPages === 1 ? '' : 's'},{' '}
+        {settings.sectionOrderMode === 'aiOptimized' ? 'AI-optimized section order' : 'fixed section order'}). Change
+        the template on the{' '}
         <Link to="/templates" className="underline">
           Templates
+        </Link>{' '}
+        page, or these defaults on the{' '}
+        <Link to="/settings" className="underline">
+          Settings
         </Link>{' '}
         page.
       </p>
@@ -150,21 +180,41 @@ export function GeneratePage() {
       </form>
 
       {result ? (
-        <div className="flex flex-col gap-2 rounded-md border border-slate-200 p-4">
+        <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-4">
           <p className="text-sm text-slate-700">
             Generated a {result.pageCount}-page resume using {activeTemplate.name}.
           </p>
-          {result.warnings ? (
-            <p className="text-xs text-amber-700">Compiler warnings: {result.warnings}</p>
+          {result.warnings ? <p className="text-xs text-amber-700">{result.warnings}</p> : null}
+
+          <div className="flex items-center gap-3">
+            <a
+              href={result.downloadUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="w-fit rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            >
+              View PDF
+            </a>
+            <button
+              type="button"
+              onClick={() => setShowSource((prev) => !prev)}
+              className="text-sm text-slate-600 underline"
+            >
+              {showSource ? 'Hide' : 'Show'} LaTeX source
+            </button>
+          </div>
+
+          <iframe
+            title="Generated resume preview"
+            src={result.downloadUrl}
+            className="h-[36rem] w-full rounded-md border border-slate-200"
+          />
+
+          {showSource ? (
+            <pre className="max-h-[36rem] overflow-auto rounded-md bg-slate-50 p-3 font-mono text-xs whitespace-pre-wrap text-slate-700">
+              {result.generatedLatex}
+            </pre>
           ) : null}
-          <a
-            href={result.downloadUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="w-fit rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-          >
-            Download PDF
-          </a>
         </div>
       ) : null}
     </div>

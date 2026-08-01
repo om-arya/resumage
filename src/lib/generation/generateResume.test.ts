@@ -201,4 +201,82 @@ describe('generateResume', () => {
     expect(result.warnings).toMatch(/ranking was skipped/)
     warnSpy.mockRestore()
   })
+
+  it('defaults sectionOrderMode to fixed and persists whatever mode was used', async () => {
+    mockedCompileLatex.mockResolvedValue({ pdfStoragePath: 'p', pageCount: 1 })
+
+    await generateResume({
+      uid: 'u1',
+      jobDescriptionText: 'Looking for a software engineer',
+      template,
+      basicInfo: null,
+      sections: [section],
+      entries: [entry],
+      bullets: [bullet],
+      skillRows: [],
+      skills: [],
+    })
+
+    expect(mockedSetResumeDbDoc).toHaveBeenCalledWith(
+      'u1',
+      'generatedResumes',
+      'resume-1',
+      expect.objectContaining({ sectionOrderMode: 'fixed' }),
+    )
+  })
+
+  it('reorders sections by relevance when sectionOrderMode is aiOptimized, without touching entry/bullet order', async () => {
+    mockedCompileLatex.mockResolvedValue({ pdfStoragePath: 'p', pageCount: 1 })
+    mockedGetOrComputeEmbedding.mockResolvedValue([1, 0]) // jd embedding
+
+    const lowSection: Section = { ...section, id: 's-low', order: 0 }
+    const highSection: Section = { ...section, id: 's-high', order: 1 }
+    // orthogonal → score 0
+    const lowEntry: Entry = { ...entry, id: 'e-low', sectionId: 's-low', embedding: [0, 1], latex: '\\entry{LowEntry}\n{{BULLETS}}' }
+    // parallel → score 1
+    const highEntry: Entry = { ...entry, id: 'e-high', sectionId: 's-high', embedding: [1, 0], latex: '\\entry{HighEntry}\n{{BULLETS}}' }
+
+    const result = await generateResume({
+      uid: 'u1',
+      jobDescriptionText: 'Looking for a software engineer',
+      template,
+      basicInfo: null,
+      sections: [lowSection, highSection],
+      entries: [lowEntry, highEntry],
+      bullets: [],
+      skillRows: [],
+      skills: [],
+      sectionOrderMode: 'aiOptimized',
+    })
+
+    const highIndex = result.generatedLatex.indexOf('HighEntry')
+    const lowIndex = result.generatedLatex.indexOf('LowEntry')
+    expect(highIndex).toBeGreaterThanOrEqual(0)
+    expect(highIndex).toBeLessThan(lowIndex)
+    expect(mockedSetResumeDbDoc).toHaveBeenCalledWith(
+      'u1',
+      'generatedResumes',
+      'resume-1',
+      expect.objectContaining({ sectionOrderMode: 'aiOptimized' }),
+    )
+  })
+
+  it('warns when the result comes in under the configured minimum page count', async () => {
+    mockedCompileLatex.mockResolvedValue({ pdfStoragePath: 'p', pageCount: 1 })
+
+    const result = await generateResume({
+      uid: 'u1',
+      jobDescriptionText: 'Looking for a software engineer',
+      template,
+      basicInfo: null,
+      sections: [section],
+      entries: [entry],
+      bullets: [bullet],
+      skillRows: [],
+      skills: [],
+      minPages: 2,
+    })
+
+    expect(result.warnings).toMatch(/under your target minimum of 2/)
+  })
 })

@@ -104,6 +104,12 @@ export interface PageConstraints {
 
 export type SectionOrderMode = 'fixed' | 'aiOptimized'
 
+/** Per-user generation defaults (Milestone 6), embedded on the `users/{uid}` doc. */
+export interface GenerationSettings {
+  pageConstraints: PageConstraints
+  sectionOrderMode: SectionOrderMode
+}
+
 export interface GeneratedResume {
   id: string
   jobDescriptionText: string
