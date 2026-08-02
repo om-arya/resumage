@@ -77,13 +77,14 @@ Provider abstraction (`src/lib/semantic/provider.ts`) so a future `ollamaProvide
 
 No hardcoded Jake's-Resume logic anywhere. Jake's Resume is a seeded `ResumeTemplate` data document with placeholder wrapper strings (`{{HEADER}}`, `{{SECTIONS}}`, `{{TITLE}}`, `{{BULLETS}}`, etc.). `renderTemplate.ts` does pure `{{KEY}}` substitution. A new template later is just a new data document — zero app-code changes.
 
-## 7. Cloud Functions (Milestone 5)
+## 7. Cloud Functions (Milestone 5/7)
 
-Two `onCall` functions only:
+Three `onCall` functions:
 - **`extractJdText({ storagePath }) → { text }`** — `pdf-parse` over an uploaded JD PDF.
 - **`compileLatex({ latexSource, resumeId? }) → { pdfStoragePath, pageCount, warnings? }`** — runs Tectonic, uploads the PDF, returns its Storage path.
+- **`parseResumePdf({ storagePath }) → { items }`** (Milestone 7) — same `pdf-parse` dependency, but overrides its `pagerender` hook to pull position + font size out of pdf.js's page object per text run instead of collapsing to a string; see §10.
 
-Both verify `request.auth`. Tectonic bundling: pin a release binary via a `postinstall` script into `functions/bin/tectonic`, shell-escape disabled.
+All three verify `request.auth`. Tectonic bundling: pin a release binary via a `postinstall` script into `functions/bin/tectonic`, shell-escape disabled.
 
 ## 8. Frontend architecture
 
@@ -93,13 +94,15 @@ Folder structure, routing, and component hierarchy: see `src/` — `lib/firebase
 
 ## 9. Security
 
-**Firestore rules** (flat structure → one uniform wildcard rule) and **Storage rules** (per-uid path prefix) — see `firestore.rules` / `storage.rules` at the repo root. Route guards (`ProtectedRoute`/`PublicOnlyRoute`) are UX only; the real boundary is rules + Cloud Function auth checks. Field-level rule validation, rate limiting, and App Check are deferred to Milestone 7.
+**Firestore rules** (flat structure → one uniform wildcard rule) and **Storage rules** (per-uid path prefix) — see `firestore.rules` / `storage.rules` at the repo root. Route guards (`ProtectedRoute`/`PublicOnlyRoute`) are UX only; the real boundary is rules + Cloud Function auth checks. Field-level rule validation, rate limiting, and App Check are deferred to Milestone 8.
 
-## 10. Resume import (auto-parse) — Milestone 9
+## 10. Resume import (auto-parse) — Milestone 7
 
-Upload an existing resume PDF to auto-populate the Resume DB instead of starting blank. Reuses `extractJdText` (§7) unchanged for PDF→text. `heuristicResumeParser.ts` (`src/lib/import/`) structures it deterministically — no paid APIs, no LLM — behind a `ResumeParserProvider` interface, the same swappable pattern as §4.
+Entry point is an "Import from PDF" button on `/resume-db` itself, next to the page heading — a new user's first move can be "upload my existing resume" instead of starting blank.
 
-Parse-then-review, never a silent write: the parse is an in-memory draft; a checklist UI lets the user toggle/edit before import, and only confirmed items go through the existing `resumeDbStore` CRUD actions, so they get default-LaTeX and semantic/embedding generation exactly like hand-typed content.
+Accuracy is the hard part, and a flat text dump isn't enough — resume structure (name vs. a job title, where one entry ends and the next begins, bullet vs. header) is carried by layout, not just words. `parseResumePdf` (§7) gets that layout for free by overriding `pdf-parse`'s `pagerender` hook to read each text run's position and font size from pdf.js instead of collapsing the page to a string. `src/lib/import/` structures it deterministically, no paid API or LLM, off layout signals: `groupIntoLines.ts` reconstructs visual lines from the raw runs; `heuristicResumeExtractor.ts` then classifies off font size and position — largest font in the whole document is always the name (never guessed as a header, even in ALL CAPS); short/isolated/larger-or-all-caps lines are section headers, known resume-section names trusted outright and anything else content-sniffed (dated → entries, comma/colon lists → skills); a bigger-than-typical vertical gap marks a new entry, working whether or not it has bullets; `dateExtraction.ts` reuses `MONTH_NAMES` from §4's extractor to pull start/end dates out of an entry's header line(s). Sits behind a `ResumeParserProvider` interface (§4's swappable pattern).
+
+Parse-then-review, never a silent write: the parse is an in-memory draft, never touching `resumeDbStore` until confirmed. A checklist UI (`ImportResumeDialog.tsx`) lets the user toggle/edit every section, entry, bullet, and skill row. Confirmed sections go through `resumeDbStore.importParsedResume` — the same local-draft path as a hand-typed `addSection`/`addEntry`/... call, so they land unsaved and get a second review in place before the page's own Save button. Basic info is the one exception (it's a singleton, not a list of add-able items) — if confirmed, it's written immediately via `saveBasicInfo`, overwriting whatever was there. Review is the real accuracy backstop: the heuristics only need to get most resumes mostly right.
 
 ## 11. Milestone Roadmap
 
@@ -109,9 +112,9 @@ Parse-then-review, never a silent write: the parse is an in-memory draft; a chec
 - **M4 (done)** — Templates are real Firestore documents, not hardcoded; Jake's Resume auto-seeds and becomes active; `/templates` provides CRUD plus a live LaTeX-source preview editor.
 - **M5 (done)** — Generation pipeline: Cloud Functions `extractJdText`/`compileLatex` (§7, bundled Tectonic — deploying is a user-run step, needs the Blaze plan), deterministic ranking/knapsack (§5), `/generate` UI.
 - **M6 (done)** — PDF preview + LaTeX source viewer on `/generate`; `/settings` for page constraints and section order (§5), backing `aiOptimized` section reordering.
-- **M7** — Security hardening: field-level rules, rate limiting/App Check, function auth audit.
-- **M8** — Remaining test coverage (§12) + CI (GitHub Actions: lint/typecheck/unit, optional emulator integration job).
-- **M9** — Resume upload + auto-parse into the Resume DB (§10): review-before-import, no separate data path.
+- **M7 (done)** — Resume upload + auto-parse (§10): "Import from PDF" on `/resume-db`, layout-aware `parseResumePdf` (§7, deploying is a user-run step like M5's functions), review-before-import.
+- **M8** — Security hardening: field-level rules, rate limiting/App Check, function auth audit.
+- **M9** — Remaining test coverage (§12) + CI (GitHub Actions: lint/typecheck/unit, optional emulator integration job).
 
 ## 12. Testing Strategy
 

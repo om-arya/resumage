@@ -7,6 +7,7 @@ import {
   removeLowestScoringOptionalItem,
   pruneEmptySections,
 } from '../ranking/knapsack'
+import { estimatePageCount } from '../ranking/estimatePageCount'
 import type { IncludedItemIds } from '../ranking/knapsack'
 import { renderTemplate, type RenderTemplateData } from '../template/renderTemplate'
 import { compileLatex } from '../firebase/functionsApi'
@@ -15,8 +16,27 @@ import { DEFAULT_GENERATION_SETTINGS } from './defaultSettings'
 import type { ResumeTemplate } from '../../types/template'
 import type { BasicInfo, Bullet, Entry, Section, SectionOrderMode, Skill, SkillRow } from '../../types/resumeDb'
 
-/** "Estimate, compile, and correct" — at most this many extra removal+recompile rounds if Tectonic disagrees with the heuristic. */
-const MAX_CORRECTION_ITERATIONS = 2
+/**
+ * "Estimate, compile, and correct" — at most this many extra *real Tectonic
+ * compile* rounds if the client-side estimate disagrees with reality. Each
+ * round itself removes as many items as the fast heuristic (estimatePageCount,
+ * no network) thinks are needed before spending a real compile to verify —
+ * not just one item — so a single round can recover even if the initial
+ * estimate was drastically wrong (e.g. it thought everything already fit in
+ * one page and skipped trimming entirely), not just slightly wrong.
+ */
+const MAX_CORRECTION_ROUNDS = 6
+
+/** A compileLatex failure, carrying the .tex source that was attempted so the UI can show it for debugging instead of just the Tectonic error text. */
+export class GenerateResumeError extends Error {
+  readonly attemptedLatex: string
+
+  constructor(message: string, attemptedLatex: string) {
+    super(message)
+    this.name = 'GenerateResumeError'
+    this.attemptedLatex = attemptedLatex
+  }
+}
 
 export interface GenerateResumeInput {
   uid: string
@@ -62,6 +82,18 @@ function filterData(
     bullets: input.bullets.filter((bullet) => ids.bullets.includes(bullet.id)),
     skillRows: input.skillRows,
     skills: input.skills.filter((skill) => ids.skills.includes(skill.id)),
+  }
+}
+
+async function compileLatexOrThrow(
+  generatedLatex: string,
+  resumeId: string,
+): ReturnType<typeof compileLatex> {
+  try {
+    return await compileLatex(generatedLatex, resumeId)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to compile the LaTeX source.'
+    throw new GenerateResumeError(message, generatedLatex)
   }
 }
 
@@ -111,16 +143,33 @@ export async function generateResume(input: GenerateResumeInput): Promise<Genera
     input.template,
     filterData(input, includedItemIds, sectionOrderMode, fit.scoreBreakdown),
   )
-  let compileResult = await compileLatex(generatedLatex, resumeId)
+  let compileResult = await compileLatexOrThrow(generatedLatex, resumeId)
 
-  for (let attempt = 0; attempt < MAX_CORRECTION_ITERATIONS && compileResult.pageCount > maxPages; attempt++) {
-    const next = removeLowestScoringOptionalItem(
-      includedItemIds,
-      { entries: input.entries, bullets: input.bullets, skills: input.skills },
-      fit.scoreBreakdown,
+  for (let round = 0; round < MAX_CORRECTION_ROUNDS && compileResult.pageCount > maxPages; round++) {
+    // We only get here because the *real* compile just said this is over
+    // budget, so always remove at least one item regardless of what the fast
+    // heuristic thinks (it could easily already say "fits" — that's exactly
+    // how we ended up over budget with nothing trimmed in the first place).
+    // Keep removing beyond that first item, still for free, as long as the
+    // heuristic itself keeps saying over-budget — so one round can catch up
+    // several items instead of just one, before the next expensive recompile.
+    let candidate = includedItemIds
+    do {
+      const next = removeLowestScoringOptionalItem(
+        candidate,
+        { entries: input.entries, bullets: input.bullets, skills: input.skills },
+        fit.scoreBreakdown,
+      )
+      if (next === candidate) break // nothing left to drop
+      candidate = next
+    } while (
+      estimatePageCount(
+        renderTemplate(input.template, filterData(input, candidate, sectionOrderMode, fit.scoreBreakdown)),
+      ) > maxPages
     )
-    if (next === includedItemIds) break // nothing left to drop
-    includedItemIds = pruneEmptySections(next, {
+    if (candidate === includedItemIds) break // nothing left to drop at all
+
+    includedItemIds = pruneEmptySections(candidate, {
       sections: input.sections,
       entries: input.entries,
       skillRows: input.skillRows,
@@ -130,7 +179,7 @@ export async function generateResume(input: GenerateResumeInput): Promise<Genera
       input.template,
       filterData(input, includedItemIds, sectionOrderMode, fit.scoreBreakdown),
     )
-    compileResult = await compileLatex(generatedLatex, resumeId)
+    compileResult = await compileLatexOrThrow(generatedLatex, resumeId)
   }
 
   await setResumeDbDoc(input.uid, 'generatedResumes', resumeId, {

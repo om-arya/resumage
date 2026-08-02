@@ -10,6 +10,7 @@ const template: ResumeTemplate = {
   latexPostamble: '\\end{document}',
   mainBodyLatex: '{{HEADER}}\n{{SECTIONS}}',
   sectionWrapperLatex: '\\section{{{SECTION_TITLE}}}\n{{SECTION_BODY}}',
+  skillsSectionWrapperLatex: '\\section{{{SECTION_TITLE}}}\n{{SECTION_BODY}}',
   entryWrapperLatex: '\\entry{{{TITLE}}}\n{{BULLETS}}',
   bulletWrapperLatex: '\\item{{{TEXT}}}',
   bulletListWrapperLatex: '\\begin{itemize}\n{{BULLETS}}\n\\end{itemize}',

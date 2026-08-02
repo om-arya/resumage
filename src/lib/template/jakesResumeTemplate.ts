@@ -55,8 +55,19 @@ export const JAKES_RESUME_TEMPLATE: ResumeTemplate = {
 
 \newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in, label={}]}
 \newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
-\newcommand{\resumeItemListStart}{\begin{itemize}}
+% An explicit Unicode bullet, not itemize's OT1/T1-encoded \textbullet default —
+% under Tectonic's XeTeX engine that default's glyph lookup can silently fall
+% back to a plain hyphen instead of rendering a round bullet. XeTeX reads UTF-8
+% natively, so a literal bullet character here sidesteps the lookup entirely.
+\newcommand{\resumeItemListStart}{\begin{itemize}[label=•]}
 \newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}
+
+% Skill rows are short single lines, not full entries — resumeSubHeadingListStart's
+% default itemize spacing (tuned for resumeSubheading's much taller tabular blocks)
+% leaves visibly too much gap between them. itemsep/parsep/topsep=0pt makes each
+% row's own \item contribute zero extra space, independent of any \vspace tuning.
+\newcommand{\resumeSkillsListStart}{\begin{itemize}[leftmargin=0.15in, label={}, itemsep=0pt, parsep=0pt, topsep=0pt]}
+\newcommand{\resumeSkillsListEnd}{\end{itemize}}
 
 \begin{document}`,
   latexPostamble: String.raw`
@@ -66,6 +77,10 @@ export const JAKES_RESUME_TEMPLATE: ResumeTemplate = {
   \resumeSubHeadingListStart
 {{SECTION_BODY}}
   \resumeSubHeadingListEnd`,
+  skillsSectionWrapperLatex: String.raw`\section{{{SECTION_TITLE}}}
+  \resumeSkillsListStart
+{{SECTION_BODY}}
+  \resumeSkillsListEnd`,
   entryWrapperLatex: String.raw`    \resumeSubheading
       {{{TITLE}}}{{{DATES}}}
       {{{ORG}}}{{{LOCATION}}}
@@ -74,7 +89,12 @@ export const JAKES_RESUME_TEMPLATE: ResumeTemplate = {
   bulletListWrapperLatex: String.raw`      \resumeItemListStart
 {{BULLETS}}
       \resumeItemListEnd`,
-  skillRowWrapperLatex: String.raw`    \textbf{{{CATEGORY}}}{: }{{SKILLS_LIST}} \\`,
+  // \item is still required — resumeSkillsListStart is still an itemize
+  // environment, and content inside one with no \item at all is exactly
+  // "Something's wrong--perhaps a missing \item." \small matches every other
+  // wrapper's font size; no \vspace hack needed since the environment itself
+  // now declares zero inter-item spacing.
+  skillRowWrapperLatex: String.raw`    \item\small{\textbf{{{CATEGORY}}}{: }{{SKILLS_LIST}}}`,
   skillListSeparator: ', ',
   headerWrapperLatex: String.raw`\begin{center}
     \textbf{\Huge \scshape {{NAME}}} \\ \vspace{1pt}

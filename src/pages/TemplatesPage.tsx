@@ -50,6 +50,7 @@ export function TemplatesPage() {
       latexPostamble: base.latexPostamble,
       mainBodyLatex: base.mainBodyLatex,
       sectionWrapperLatex: base.sectionWrapperLatex,
+      skillsSectionWrapperLatex: base.skillsSectionWrapperLatex,
       entryWrapperLatex: base.entryWrapperLatex,
       bulletWrapperLatex: base.bulletWrapperLatex,
       bulletListWrapperLatex: base.bulletListWrapperLatex,

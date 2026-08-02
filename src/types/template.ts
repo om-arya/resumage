@@ -10,8 +10,16 @@ export interface ResumeTemplate {
   latexPostamble: string
   /** Placeholders: {{HEADER}}, {{SECTIONS}} */
   mainBodyLatex: string
-  /** Placeholders: {{SECTION_TITLE}}, {{SECTION_BODY}} */
+  /** Placeholders: {{SECTION_TITLE}}, {{SECTION_BODY}} — used for 'entries'-type sections. */
   sectionWrapperLatex: string
+  /**
+   * Same placeholders, used for 'skills'-type sections instead. Split out from
+   * sectionWrapperLatex because a skills section's rows are short single lines,
+   * not full entries — sharing one wrapper meant either fighting per-row
+   * \vspace hacks against list spacing tuned for entries, or reusing the same
+   * itemize environment and inheriting its wrong-for-this-content-type spacing.
+   */
+  skillsSectionWrapperLatex: string
   /** Placeholders: {{TITLE}}, {{ORG}}, {{DATES}}, {{LOCATION}}, {{BULLETS}} */
   entryWrapperLatex: string
   /** Placeholders: {{TEXT}} */

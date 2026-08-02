@@ -48,6 +48,7 @@ const template: ResumeTemplate = {
   latexPostamble: '',
   mainBodyLatex: '',
   sectionWrapperLatex: '',
+  skillsSectionWrapperLatex: '',
   entryWrapperLatex: '\\entry{{{TITLE}}}\n{{BULLETS}}',
   bulletWrapperLatex: '\\item{{{TEXT}}}',
   bulletListWrapperLatex: '',
@@ -173,6 +174,75 @@ describe('resumeDbStore — local draft add/save', () => {
     expect(usePendingChangesStore.getState().isDirty).toBe(false)
   })
 
+  it("cascades a section's id swap to its children immediately, so they never render as orphaned mid-save", async () => {
+    // Regression test: previously a child's FK only resolved when *its own*
+    // flush ran (tier 1+), leaving a render in between tier 0 and tier 1 where
+    // `entries`/`bullets` still pointed at the section's old local id while
+    // `sections` already had the new one — orphaning them from every rendered
+    // SectionCard, which unmounts EntryCard/BulletRow and unregisters their
+    // flush before it ever fires, silently dropping them from the save.
+    act(() => useResumeDbStore.getState().addSection('Experience', 'entries'))
+    const sectionLocalId = useResumeDbStore.getState().sections[0].id
+    act(() =>
+      useResumeDbStore
+        .getState()
+        .addEntry(sectionLocalId, { title: 'Engineer', organization: '', startDate: '', endDate: '', location: '' }),
+    )
+    const entryLocalId = useResumeDbStore.getState().entries[0].id
+    act(() => useResumeDbStore.getState().addBullet(entryLocalId, sectionLocalId, 'Did a thing'))
+
+    await act(async () => {
+      await useResumeDbStore.getState().updateSection(sectionLocalId, {})
+    })
+
+    const state = useResumeDbStore.getState()
+    const realSectionId = state.sections[0].id
+    expect(realSectionId.startsWith('local:')).toBe(false)
+    // The entry and bullet must already point at the real section id — not
+    // just eventually, via their own later flush, but right now, so a render
+    // triggered by this very set() call would still find them under their section.
+    expect(state.entries[0].sectionId).toBe(realSectionId)
+    expect(state.bullets[0].sectionId).toBe(realSectionId)
+  })
+
+  it("cascades an entry's id swap to its bullets immediately", async () => {
+    act(() => useResumeDbStore.getState().addSection('Experience', 'entries'))
+    const sectionLocalId = useResumeDbStore.getState().sections[0].id
+    act(() =>
+      useResumeDbStore
+        .getState()
+        .addEntry(sectionLocalId, { title: 'Engineer', organization: '', startDate: '', endDate: '', location: '' }),
+    )
+    const entryLocalId = useResumeDbStore.getState().entries[0].id
+    act(() => useResumeDbStore.getState().addBullet(entryLocalId, sectionLocalId, 'Did a thing'))
+
+    await act(async () => {
+      await useResumeDbStore.getState().updateEntry(entryLocalId, {})
+    })
+
+    const state = useResumeDbStore.getState()
+    const realEntryId = state.entries[0].id
+    expect(realEntryId.startsWith('local:')).toBe(false)
+    expect(state.bullets[0].entryId).toBe(realEntryId)
+  })
+
+  it("cascades a skill row's id swap to its skills immediately", async () => {
+    act(() => useResumeDbStore.getState().addSection('Skills', 'skills'))
+    const sectionLocalId = useResumeDbStore.getState().sections[0].id
+    act(() => useResumeDbStore.getState().addSkillRow(sectionLocalId, 'Languages'))
+    const rowLocalId = useResumeDbStore.getState().skillRows[0].id
+    act(() => useResumeDbStore.getState().addSkill(rowLocalId, 'TypeScript'))
+
+    await act(async () => {
+      await useResumeDbStore.getState().updateSkillRow(rowLocalId, {})
+    })
+
+    const state = useResumeDbStore.getState()
+    const realRowId = state.skillRows[0].id
+    expect(realRowId.startsWith('local:')).toBe(false)
+    expect(state.skills[0].skillRowId).toBe(realRowId)
+  })
+
   it('does not show a duplicate when the live listener echoes a create before its write resolves', async () => {
     // setResumeDbDoc resolving is deliberately delayed to simulate the write
     // still being in flight when the listener fires with the same doc.
@@ -249,5 +319,87 @@ describe('resumeDbStore — local draft add/save', () => {
     // A stale snapshot event (in flight before the delete lands) must not resurrect it.
     act(() => onSectionsChange([section]))
     expect(useResumeDbStore.getState().sections).toHaveLength(0)
+  })
+
+  it('importParsedResume adds a full section/entry/bullet/skillRow/skill tree as local, dirty drafts', () => {
+    act(() =>
+      useResumeDbStore.getState().importParsedResume([
+        {
+          displayName: 'Experience',
+          sectionType: 'entries',
+          entries: [
+            {
+              fields: { title: 'Engineer', organization: 'Acme', startDate: '2020', endDate: '2022', location: '' },
+              bullets: ['Did a thing', 'Did another thing'],
+            },
+          ],
+          skillRows: [],
+        },
+        {
+          displayName: 'Skills',
+          sectionType: 'skills',
+          entries: [],
+          skillRows: [{ categoryName: 'Languages', skills: ['TypeScript', 'Go'] }],
+        },
+      ]),
+    )
+
+    const state = useResumeDbStore.getState()
+    expect(state.sections.map((s) => s.displayName)).toEqual(['Experience', 'Skills'])
+    expect(state.sections.every((s) => s.id.startsWith('local:'))).toBe(true)
+    expect(state.entries).toHaveLength(1)
+    expect(state.entries[0].sectionId).toBe(state.sections[0].id)
+    expect(state.entries[0].fields.title).toBe('Engineer')
+    expect(state.bullets).toHaveLength(2)
+    expect(state.bullets.every((b) => b.entryId === state.entries[0].id && b.sectionId === state.sections[0].id)).toBe(
+      true,
+    )
+    expect(state.skillRows).toHaveLength(1)
+    expect(state.skillRows[0].sectionId).toBe(state.sections[1].id)
+    expect(state.skills.map((s) => s.displayName)).toEqual(['TypeScript', 'Go'])
+
+    // Nothing touched Firestore — everything landed as an unsaved local draft.
+    expect(mockedSet).not.toHaveBeenCalled()
+    const dirty = usePendingChangesStore.getState().dirtyKeys
+    expect(dirty.has(`sections:${state.sections[0].id}`)).toBe(true)
+    expect(dirty.has(`entries:${state.entries[0].id}`)).toBe(true)
+    expect(dirty.has(`bullets:${state.bullets[0].id}`)).toBe(true)
+    expect(dirty.has(`skillRows:${state.skillRows[0].id}`)).toBe(true)
+    expect(dirty.has(`skills:${state.skills[0].id}`)).toBe(true)
+  })
+
+  it('imports content as not-must-include, unlike addSection/addEntry/... — a bulk import must leave the page-fit knapsack something to trim', () => {
+    act(() =>
+      useResumeDbStore.getState().importParsedResume([
+        {
+          displayName: 'Experience',
+          sectionType: 'entries',
+          entries: [
+            {
+              fields: { title: 'Engineer', organization: 'Acme', startDate: '2020', endDate: '2022', location: '' },
+              bullets: ['Did a thing'],
+            },
+          ],
+          skillRows: [],
+        },
+        {
+          displayName: 'Skills',
+          sectionType: 'skills',
+          entries: [],
+          skillRows: [{ categoryName: 'Languages', skills: ['TypeScript'] }],
+        },
+      ]),
+    )
+
+    const state = useResumeDbStore.getState()
+    expect(state.sections.every((s) => s.mustInclude === false)).toBe(true)
+    expect(state.entries.every((e) => e.mustInclude === false)).toBe(true)
+    expect(state.bullets.every((b) => b.mustInclude === false)).toBe(true)
+    expect(state.skills.every((s) => s.mustInclude === false)).toBe(true)
+
+    // Hand-typed additions are unaffected — still default to must-include.
+    act(() => useResumeDbStore.getState().addSection('Projects', 'entries'))
+    const handTyped = useResumeDbStore.getState().sections.find((s) => s.displayName === 'Projects')
+    expect(handTyped?.mustInclude).toBe(true)
   })
 })

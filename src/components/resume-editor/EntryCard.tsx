@@ -50,7 +50,9 @@ export function EntryCard({ entry }: EntryCardProps) {
     setNewBulletText('')
   }
 
-  const summary = [fields.title || 'Untitled entry', fields.organization].filter(Boolean).join(' · ')
+  const summary = [fields.title || 'Untitled entry', fields.organization]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
     <div
@@ -89,77 +91,83 @@ export function EntryCard({ entry }: EntryCardProps) {
         </div>
       </div>
 
-      {collapsed ? null : (
-        <>
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              id={`entry-title-${entry.id}`}
-              label="Title"
-              value={fields.title}
-              onChange={(e) => updateFields((prev) => ({ ...prev, title: e.target.value }))}
-            />
-            <Input
-              id={`entry-org-${entry.id}`}
-              label="Organization"
-              value={fields.organization}
-              onChange={(e) => updateFields((prev) => ({ ...prev, organization: e.target.value }))}
-            />
-            <Input
-              id={`entry-start-${entry.id}`}
-              label="Start date"
-              value={fields.startDate}
-              onChange={(e) => updateFields((prev) => ({ ...prev, startDate: e.target.value }))}
-            />
-            <Input
-              id={`entry-end-${entry.id}`}
-              label="End date"
-              value={fields.endDate}
-              onChange={(e) => updateFields((prev) => ({ ...prev, endDate: e.target.value }))}
-            />
-            <Input
-              id={`entry-location-${entry.id}`}
-              label="Location"
-              value={fields.location}
-              onChange={(e) => updateFields((prev) => ({ ...prev, location: e.target.value }))}
-            />
-          </div>
-
-          <LatexOverrideSection
-            latex={latex}
-            isLatexOverridden={isLatexOverridden}
-            onChange={setLatex}
-            onRevertToAuto={revertToAutoLatex}
+      {/*
+        Visually hidden rather than unmounted when collapsed: BulletRow's
+        useDraftEntity/useRegisteredFlush only runs while mounted, so an entry
+        that starts collapsed (any entry with a title already filled in — every
+        imported entry, in particular) would otherwise never register its
+        bullets' save flushes. Save would then silently skip them forever
+        (nothing to call), leaving "unsaved changes" stuck on even after saving.
+      */}
+      <div className={twMerge('flex flex-col gap-3', collapsed && 'hidden')}>
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            id={`entry-title-${entry.id}`}
+            label="Title"
+            value={fields.title}
+            onChange={(e) => updateFields((prev) => ({ ...prev, title: e.target.value }))}
           />
+          <Input
+            id={`entry-org-${entry.id}`}
+            label="Organization"
+            value={fields.organization}
+            onChange={(e) => updateFields((prev) => ({ ...prev, organization: e.target.value }))}
+          />
+          <Input
+            id={`entry-start-${entry.id}`}
+            label="Start date"
+            value={fields.startDate}
+            onChange={(e) => updateFields((prev) => ({ ...prev, startDate: e.target.value }))}
+          />
+          <Input
+            id={`entry-end-${entry.id}`}
+            label="End date"
+            value={fields.endDate}
+            onChange={(e) => updateFields((prev) => ({ ...prev, endDate: e.target.value }))}
+          />
+          <Input
+            id={`entry-location-${entry.id}`}
+            label="Location"
+            value={fields.location}
+            onChange={(e) => updateFields((prev) => ({ ...prev, location: e.target.value }))}
+          />
+        </div>
 
-          <div className="flex flex-col gap-2 border-t border-slate-100 pt-3">
-            <span className="text-sm font-medium text-slate-700">Bullets</span>
-            <SortableList
-              ids={bullets.map((b) => b.id)}
-              onReorder={reorderBullets}
-              className="flex flex-col gap-2"
-            >
-              {bullets.map((bullet) => (
-                <SortableItem key={bullet.id} id={bullet.id}>
-                  <BulletRow bullet={bullet} />
-                </SortableItem>
-              ))}
-            </SortableList>
-            <form onSubmit={handleAddBullet} className="flex gap-2">
-              <textarea
-                aria-label="New bullet text"
-                value={newBulletText}
-                onChange={(e) => setNewBulletText(e.target.value)}
-                rows={1}
-                placeholder="New bullet…"
-                className="flex-1 rounded-md border border-slate-300 p-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
-              />
-              <Button type="submit" className="w-auto shrink-0 px-3 py-2 text-sm">
-                Add bullet
-              </Button>
-            </form>
-          </div>
-        </>
-      )}
+        <LatexOverrideSection
+          latex={latex}
+          isLatexOverridden={isLatexOverridden}
+          onChange={setLatex}
+          onRevertToAuto={revertToAutoLatex}
+        />
+
+        <div className="flex flex-col gap-2 border-t border-slate-100 pt-3">
+          <span className="text-sm font-medium text-slate-700">Bullets</span>
+          <SortableList
+            ids={bullets.map((b) => b.id)}
+            onReorder={reorderBullets}
+            className="flex flex-col gap-2"
+          >
+            {bullets.map((bullet) => (
+              <SortableItem key={bullet.id} id={bullet.id}>
+                <BulletRow bullet={bullet} />
+              </SortableItem>
+            ))}
+          </SortableList>
+          <form onSubmit={handleAddBullet} className="flex gap-2">
+            <textarea
+              aria-label="New bullet text"
+              value={newBulletText}
+              onChange={(e) => setNewBulletText(e.target.value)}
+              rows={1}
+              placeholder="New bullet…"
+              className="flex-1 rounded-md border border-slate-300 p-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+            />
+            <Button type="submit" className="w-auto shrink-0 px-3 py-2 text-sm">
+              Add bullet
+            </Button>
+          </form>
+        </div>
+      </div>
     </div>
   )
 }

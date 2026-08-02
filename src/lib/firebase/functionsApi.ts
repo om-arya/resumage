@@ -58,3 +58,31 @@ export async function compileLatex(latexSource: string, resumeId: string): Promi
     throw toCallableError(err, 'compileLatex')
   }
 }
+
+interface ParseResumePdfRequest {
+  storagePath: string
+}
+
+/** One run of text as pdf.js laid it out on the page — position + size, not just the string. */
+export interface ResumeTextItem {
+  text: string
+  x: number
+  y: number
+  width: number
+  fontSize: number
+  page: number
+}
+
+interface ParseResumePdfResponse {
+  items: ResumeTextItem[]
+}
+
+export async function parseResumePdf(storagePath: string): Promise<ResumeTextItem[]> {
+  const callable = httpsCallable<ParseResumePdfRequest, ParseResumePdfResponse>(functions, 'parseResumePdf')
+  try {
+    const result = await callable({ storagePath })
+    return result.data.items
+  } catch (err) {
+    throw toCallableError(err, 'parseResumePdf')
+  }
+}

@@ -31,6 +31,7 @@ import {
 import { getActiveTemplate } from './templatesStore'
 import { getSemanticTextProvider } from '../lib/semantic/ruleBasedProvider'
 import { computeSemanticFields } from '../lib/semantic/computeSemanticFields'
+import type { ParsedSection } from '../lib/import/types'
 
 const EMPTY_BASIC_INFO: BasicInfo = {
   fields: { name: '', email: '', phone: '', location: '', links: [] },
@@ -184,6 +185,9 @@ interface ResumeDbState {
     id: string,
     mustInclude: boolean,
   ) => void
+
+  /** Bulk-adds confirmed resume-import sections (src/lib/import) as local, unsaved entities — same as one addSection/addEntry/... call per item, batched. Basic info isn't part of this — it's a singleton, saved separately via saveBasicInfo. */
+  importParsedResume: (sections: ParsedSection[]) => void
 }
 
 let unsubscribers: Array<() => void> = []
@@ -307,11 +311,21 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     // Mint the id and swap it into local state *before* anything async runs, so
     // the live listener's near-instant echo of the write below (which can beat
     // this function's own awaited write call) never sees a doc whose id doesn't
-    // already match something in local state (see mergeSnapshot).
+    // already match something in local state (see mergeSnapshot). Cascading the
+    // swap to every child's sectionId in this same set() call matters just as
+    // much: without it, there's a render in between this flush and the
+    // children's own (tier 1) flush where entries/bullets/skillRows still point
+    // at the old local id while `sections` already has the new one — orphaning
+    // them from every currently-rendered SectionCard, which unmounts their
+    // EntryCard/BulletRow/SkillRowCard and unregisters their flush before it
+    // ever runs, silently dropping them from the save.
     const writeId = isLocalId(id) ? newResumeDbDocId(uid, 'sections') : id
     if (isLocalId(id)) {
       set((state) => ({
         sections: state.sections.map((section) => (section.id === id ? { ...section, id: writeId } : section)),
+        entries: state.entries.map((entry) => (entry.sectionId === id ? { ...entry, sectionId: writeId } : entry)),
+        bullets: state.bullets.map((bullet) => (bullet.sectionId === id ? { ...bullet, sectionId: writeId } : bullet)),
+        skillRows: state.skillRows.map((row) => (row.sectionId === id ? { ...row, sectionId: writeId } : row)),
         localIdMap: { ...state.localIdMap, [id]: writeId },
         optimisticIds: new Set(state.optimisticIds).add(`sections:${writeId}`),
       }))
@@ -412,10 +426,18 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     if (!existing) return
 
     const sectionId = get().localIdMap[existing.sectionId] ?? existing.sectionId
+    // Snapshot of sibling bullets as of *this* save (by the pre-swap id — see
+    // updateSection's comment on why the id swap must cascade to children
+    // atomically, and must therefore happen after this read, not before).
+    const bulletTexts = get()
+      .bullets.filter((bullet) => bullet.entryId === id)
+      .map((bullet) => bullet.text)
+
     const writeId = isLocalId(id) ? newResumeDbDocId(uid, 'entries') : id
     if (isLocalId(id)) {
       set((state) => ({
         entries: state.entries.map((entry) => (entry.id === id ? { ...entry, id: writeId, sectionId } : entry)),
+        bullets: state.bullets.map((bullet) => (bullet.entryId === id ? { ...bullet, entryId: writeId } : bullet)),
         localIdMap: { ...state.localIdMap, [id]: writeId },
         optimisticIds: new Set(state.optimisticIds).add(`entries:${writeId}`),
       }))
@@ -424,11 +446,6 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
     const fields = patch.fields ?? existing.fields
     const latex = patch.latex ?? existing.latex
     const isLatexOverridden = patch.isLatexOverridden ?? existing.isLatexOverridden
-    // Snapshot of sibling bullets as of *this* save — editing a bullet afterward
-    // without re-saving the entry won't retroactively refresh this text.
-    const bulletTexts = get()
-      .bullets.filter((bullet) => bullet.entryId === id)
-      .map((bullet) => bullet.text)
     const semanticText = await getSemanticTextProvider().generateEntrySemanticText(fields, bulletTexts)
     const semantic = await computeSemanticFields({
       uid,
@@ -602,6 +619,7 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
       const newId = newResumeDbDocId(uid, 'skillRows')
       set((state) => ({
         skillRows: state.skillRows.map((row) => (row.id === id ? { ...row, id: newId, sectionId } : row)),
+        skills: state.skills.map((skill) => (skill.skillRowId === id ? { ...skill, skillRowId: newId } : skill)),
         localIdMap: { ...state.localIdMap, [id]: newId },
         optimisticIds: new Set(state.optimisticIds).add(`skillRows:${newId}`),
       }))
@@ -743,5 +761,121 @@ export const useResumeDbStore = create<ResumeDbState>((set, get) => ({
         break
     }
     usePendingChangesStore.getState().markDirty(`${collectionName}:${id}`)
+  },
+
+  importParsedResume(sections) {
+    const uid = get().uid
+    if (!uid) return
+    const template = getActiveTemplate()
+    // Unlike addSection/addEntry/... (DEFAULT_MUST_INCLUDE, i.e. true — you just
+    // typed it, you probably want it), a bulk import can bring in dozens of items
+    // at once. Defaulting all of them to must-include would leave the page-fit
+    // knapsack nothing it's allowed to trim, defeating job-tailored generation
+    // entirely. Leave everything optional; the user can star specific items
+    // must-include afterward if they want them guaranteed to appear.
+    const IMPORTED_MUST_INCLUDE = false
+
+    const newSections: Section[] = []
+    const newEntries: Entry[] = []
+    const newBullets: Bullet[] = []
+    const newSkillRows: SkillRow[] = []
+    const newSkills: Skill[] = []
+
+    let sectionOrder = nextOrder(get().sections)
+    for (const parsedSection of sections) {
+      const sectionId = newLocalId()
+      newSections.push({
+        id: sectionId,
+        displayName: parsedSection.displayName,
+        latex: generateSectionLatex(parsedSection.displayName),
+        isLatexOverridden: false,
+        semanticText: '',
+        semanticTextHash: '',
+        embedding: null,
+        mustInclude: IMPORTED_MUST_INCLUDE,
+        order: sectionOrder++,
+        sectionType: parsedSection.sectionType,
+        createdAt: NO_TIMESTAMP,
+        updatedAt: NO_TIMESTAMP,
+      })
+
+      parsedSection.entries.forEach((parsedEntry, entryOrder) => {
+        const entryId = newLocalId()
+        newEntries.push({
+          id: entryId,
+          sectionId,
+          fields: parsedEntry.fields,
+          latex: generateEntryLatex(parsedEntry.fields, template),
+          isLatexOverridden: false,
+          semanticText: '',
+          semanticTextHash: '',
+          embedding: null,
+          mustInclude: IMPORTED_MUST_INCLUDE,
+          order: entryOrder,
+          createdAt: NO_TIMESTAMP,
+          updatedAt: NO_TIMESTAMP,
+        })
+        parsedEntry.bullets.forEach((bulletText, bulletOrder) => {
+          newBullets.push({
+            id: newLocalId(),
+            entryId,
+            sectionId,
+            text: bulletText,
+            latex: generateBulletLatex(bulletText, template),
+            isLatexOverridden: false,
+            semanticText: '',
+            semanticTextHash: '',
+            embedding: null,
+            mustInclude: IMPORTED_MUST_INCLUDE,
+            order: bulletOrder,
+            createdAt: NO_TIMESTAMP,
+            updatedAt: NO_TIMESTAMP,
+          })
+        })
+      })
+
+      parsedSection.skillRows.forEach((parsedRow, skillRowOrder) => {
+        const skillRowId = newLocalId()
+        newSkillRows.push({
+          id: skillRowId,
+          sectionId,
+          categoryName: parsedRow.categoryName,
+          latex: generateSkillRowLatex(parsedRow.categoryName, template),
+          isLatexOverridden: false,
+          order: skillRowOrder,
+          createdAt: NO_TIMESTAMP,
+          updatedAt: NO_TIMESTAMP,
+        })
+        parsedRow.skills.forEach((skillName, skillOrder) => {
+          newSkills.push({
+            id: newLocalId(),
+            skillRowId,
+            displayName: skillName,
+            semanticText: '',
+            semanticTextHash: '',
+            embedding: null,
+            mustInclude: IMPORTED_MUST_INCLUDE,
+            order: skillOrder,
+            createdAt: NO_TIMESTAMP,
+            updatedAt: NO_TIMESTAMP,
+          })
+        })
+      })
+    }
+
+    set((state) => ({
+      sections: [...state.sections, ...newSections],
+      entries: [...state.entries, ...newEntries],
+      bullets: [...state.bullets, ...newBullets],
+      skillRows: [...state.skillRows, ...newSkillRows],
+      skills: [...state.skills, ...newSkills],
+    }))
+
+    const pending = usePendingChangesStore.getState()
+    newSections.forEach((section) => pending.markDirty(`sections:${section.id}`))
+    newEntries.forEach((entry) => pending.markDirty(`entries:${entry.id}`))
+    newBullets.forEach((bullet) => pending.markDirty(`bullets:${bullet.id}`))
+    newSkillRows.forEach((row) => pending.markDirty(`skillRows:${row.id}`))
+    newSkills.forEach((skill) => pending.markDirty(`skills:${skill.id}`))
   },
 }))

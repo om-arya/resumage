@@ -18,6 +18,7 @@ const BUILT_IN_TEMPLATE_FIELDS = [
   'latexPostamble',
   'mainBodyLatex',
   'sectionWrapperLatex',
+  'skillsSectionWrapperLatex',
   'entryWrapperLatex',
   'bulletWrapperLatex',
   'bulletListWrapperLatex',

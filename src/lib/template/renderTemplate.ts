@@ -1,4 +1,5 @@
 import { substitutePlaceholders } from './substitutePlaceholders'
+import { escapeLatex } from './escapeLatex'
 import type { ResumeTemplate } from '../../types/template'
 import type { BasicInfo, Bullet, Entry, Section, Skill, SkillRow } from '../../types/resumeDb'
 
@@ -32,23 +33,33 @@ function renderEntry(template: ResumeTemplate, entry: Entry, allBullets: Bullet[
 }
 
 function renderSkillRow(template: ResumeTemplate, skillRow: SkillRow, allSkills: Skill[]): string {
+  // Unlike Section/Entry/Bullet, a Skill has no `latex` field of its own — its
+  // raw displayName is interpolated straight into the render, so it's the one
+  // place this pass has to escape text itself instead of trusting an
+  // already-escaped field. An unescaped `%` here (e.g. "90% proficiency" from
+  // an imported resume) would silently comment out the rest of the line,
+  // including whatever \item/\end{itemize} was meant to follow it.
   const skillsList = byOrder(allSkills.filter((skill) => skill.skillRowId === skillRow.id))
-    .map((skill) => skill.displayName)
+    .map((skill) => escapeLatex(skill.displayName))
     .join(template.skillListSeparator)
   return substitutePlaceholders(skillRow.latex, { SKILLS_LIST: skillsList })
 }
 
 function renderSection(template: ResumeTemplate, section: Section, data: RenderTemplateData): string {
-  const body =
-    section.sectionType === 'entries'
-      ? byOrder(data.entries.filter((entry) => entry.sectionId === section.id))
-          .map((entry) => renderEntry(template, entry, data.bullets))
-          .join('\n')
-      : byOrder(data.skillRows.filter((row) => row.sectionId === section.id))
-          .map((row) => renderSkillRow(template, row, data.skills))
-          .join('\n')
+  const isEntriesSection = section.sectionType === 'entries'
+  const body = isEntriesSection
+    ? byOrder(data.entries.filter((entry) => entry.sectionId === section.id))
+        .map((entry) => renderEntry(template, entry, data.bullets))
+        .join('\n')
+    : byOrder(data.skillRows.filter((row) => row.sectionId === section.id))
+        .map((row) => renderSkillRow(template, row, data.skills))
+        .join('\n')
 
-  return substitutePlaceholders(template.sectionWrapperLatex, {
+  // Skill rows are short single lines, not full entries — they get their own
+  // wrapper (and, in Jake's Resume, their own tightly-spaced itemize) rather
+  // than reusing entries' wrapper and inheriting spacing tuned for much taller content.
+  const wrapperLatex = isEntriesSection ? template.sectionWrapperLatex : template.skillsSectionWrapperLatex
+  return substitutePlaceholders(wrapperLatex, {
     SECTION_TITLE: section.latex,
     SECTION_BODY: body,
   })

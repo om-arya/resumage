@@ -26,7 +26,12 @@ const FIELD_DEFS: {
   { key: 'mainBodyLatex', label: 'Main body — {{HEADER}}, {{SECTIONS}}', rows: 2 },
   {
     key: 'sectionWrapperLatex',
-    label: 'Section wrapper — {{SECTION_TITLE}}, {{SECTION_BODY}}',
+    label: 'Section wrapper (entries) — {{SECTION_TITLE}}, {{SECTION_BODY}}',
+    rows: 4,
+  },
+  {
+    key: 'skillsSectionWrapperLatex',
+    label: 'Section wrapper (skills) — {{SECTION_TITLE}}, {{SECTION_BODY}}',
     rows: 4,
   },
   {

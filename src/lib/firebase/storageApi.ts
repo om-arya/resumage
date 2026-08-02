@@ -8,6 +8,13 @@ export async function uploadJdPdf(uid: string, file: File): Promise<string> {
   return storagePath
 }
 
+/** Uploads an existing resume PDF to the caller's own folder and returns its storage path (for parseResumePdf). */
+export async function uploadResumePdf(uid: string, file: File): Promise<string> {
+  const storagePath = `users/${uid}/resumeUploads/${Date.now()}-${file.name}`
+  await uploadBytes(ref(storage, storagePath), file, { contentType: 'application/pdf' })
+  return storagePath
+}
+
 export function getPdfDownloadUrl(storagePath: string): Promise<string> {
   return getDownloadURL(ref(storage, storagePath))
 }

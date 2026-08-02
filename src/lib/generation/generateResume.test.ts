@@ -25,6 +25,7 @@ const template: ResumeTemplate = {
   latexPostamble: '\\end{document}',
   mainBodyLatex: '{{HEADER}}\n{{SECTIONS}}',
   sectionWrapperLatex: '\\section{{{SECTION_TITLE}}}\n{{SECTION_BODY}}',
+  skillsSectionWrapperLatex: '\\section{{{SECTION_TITLE}}}\n{{SECTION_BODY}}',
   entryWrapperLatex: '\\entry{{{TITLE}}}\n{{BULLETS}}',
   bulletWrapperLatex: '\\item{{{TEXT}}}',
   bulletListWrapperLatex: '\\begin{itemize}\n{{BULLETS}}\n\\end{itemize}',
@@ -157,6 +158,38 @@ describe('generateResume', () => {
     // mustInclude entry/bullet — nothing removable, so it gives up after the first attempt.
     expect(mockedCompileLatex).toHaveBeenCalledTimes(1)
     expect(result.pageCount).toBe(5)
+  })
+
+  it('converges over more than 2 correction rounds when needed, instead of giving up at a fixed cap', async () => {
+    // Regression test: the old fixed 2-round cap meant a resume that started
+    // out badly over budget (very plausible for a bulk import, where — unlike
+    // hand-typed content — every item defaults to not-must-include) could give
+    // up while still multiple pages over, no matter how much removable content
+    // was left. Five removable bullets, and the mocked compile only agrees the
+    // budget is met on the 4th call — more real-compile rounds than the old cap allowed.
+    mockedCompileLatex
+      .mockResolvedValueOnce({ pdfStoragePath: 'p', pageCount: 4 })
+      .mockResolvedValueOnce({ pdfStoragePath: 'p', pageCount: 3 })
+      .mockResolvedValueOnce({ pdfStoragePath: 'p', pageCount: 2 })
+      .mockResolvedValueOnce({ pdfStoragePath: 'p', pageCount: 1 })
+
+    const bullets: Bullet[] = ['b1', 'b2', 'b3', 'b4', 'b5'].map((id) => ({ ...bullet, id }))
+
+    const result = await generateResume({
+      uid: 'u1',
+      jobDescriptionText: 'Looking for a software engineer',
+      template,
+      basicInfo: null,
+      sections: [section],
+      entries: [entry],
+      bullets,
+      skillRows: [],
+      skills: [],
+    })
+
+    expect(mockedCompileLatex).toHaveBeenCalledTimes(4)
+    expect(result.pageCount).toBe(1)
+    expect(result.includedItemIds.bullets.length).toBeLessThan(5)
   })
 
   it('embeds the job description text with a content-addressed cache key', async () => {

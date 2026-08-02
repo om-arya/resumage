@@ -118,7 +118,8 @@ export function stripUrlsEmailsPhones(input: string): string {
   return input.replace(URL_PATTERN, ' ').replace(EMAIL_PATTERN, ' ').replace(PHONE_PATTERN, ' ')
 }
 
-const MONTH_NAMES =
+/** Exported for reuse by src/lib/import's date detection — same vocabulary, different job (detect vs. strip). */
+export const MONTH_NAMES =
   'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?'
 const DATE_PATTERNS = [
   // "January 2020", "Jan 2020"

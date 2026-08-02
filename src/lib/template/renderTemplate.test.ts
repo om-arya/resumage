@@ -10,6 +10,7 @@ const template: ResumeTemplate = {
   latexPostamble: '\\end{document}',
   mainBodyLatex: '{{HEADER}}\n{{SECTIONS}}',
   sectionWrapperLatex: '\\section{{{SECTION_TITLE}}}\n{{SECTION_BODY}}',
+  skillsSectionWrapperLatex: '\\section{{{SECTION_TITLE}}}\n{{SECTION_BODY}}',
   entryWrapperLatex: '\\entry{{{TITLE}}}\n{{BULLETS}}',
   bulletWrapperLatex: '\\item{{{TEXT}}}',
   bulletListWrapperLatex: '\\begin{itemize}\n{{BULLETS}}\n\\end{itemize}',
@@ -162,6 +163,17 @@ describe('renderTemplate', () => {
     ]
     const result = renderTemplate(template, { ...emptyData, sections: [section], skillRows: [skillRow], skills })
     expect(result).toContain('\\textbf{Languages}: Python, React')
+  })
+
+  it("escapes a skill's displayName, since it (unlike Section/Entry/Bullet) has no pre-escaped latex field of its own", () => {
+    const section = makeSection({ sectionType: 'skills' })
+    const skillRow = makeSkillRow({})
+    // An unescaped `%` would comment out the rest of the line in real LaTeX,
+    // silently eating whatever \item/\end{itemize} was meant to follow it.
+    const skills = [makeSkill({ id: 'sk1', order: 0, displayName: '90% C# & R&D' })]
+    const result = renderTemplate(template, { ...emptyData, sections: [section], skillRows: [skillRow], skills })
+    expect(result).toContain('90\\% C\\# \\& R\\&D')
+    expect(result).not.toContain('90% C# & R&D')
   })
 
   it('renders sections in order and uses the section\'s own latex as the title', () => {

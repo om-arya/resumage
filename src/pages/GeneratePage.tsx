@@ -7,15 +7,21 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { Spinner } from '../components/common/Spinner'
 import { Button } from '../components/common/Button'
 import { FormError } from '../components/common/FormError'
-import { generateResume } from '../lib/generation/generateResume'
+import { generateResume, GenerateResumeError } from '../lib/generation/generateResume'
 import { getPdfDownloadUrl, uploadJdPdf } from '../lib/firebase/storageApi'
 import { extractJdText } from '../lib/firebase/functionsApi'
+import type { PageConstraints } from '../types/resumeDb'
 
 interface GenerationResult {
   downloadUrl: string
   pageCount: number
   generatedLatex: string
   warnings?: string
+}
+
+function formatPageRange({ minPages, maxPages }: Pick<PageConstraints, 'minPages' | 'maxPages'>): string {
+  const pages = minPages === maxPages ? `${maxPages}` : `${minPages}–${maxPages}`
+  return `${pages} page${maxPages === 1 && minPages === 1 ? '' : 's'}`
 }
 
 export function GeneratePage() {
@@ -42,6 +48,7 @@ export function GeneratePage() {
   const [extracting, setExtracting] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [failedLatex, setFailedLatex] = useState<string | null>(null)
   const [result, setResult] = useState<GenerationResult | null>(null)
   const [showSource, setShowSource] = useState(false)
 
@@ -84,6 +91,7 @@ export function GeneratePage() {
     event.preventDefault()
     if (!user || !jobDescriptionText.trim()) return
     setError(null)
+    setFailedLatex(null)
     setResult(null)
     setShowSource(false)
     setGenerating(true)
@@ -110,7 +118,12 @@ export function GeneratePage() {
         warnings: generation.warnings,
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate the resume.')
+      if (err instanceof GenerateResumeError) {
+        setError(err.message)
+        setFailedLatex(err.attemptedLatex)
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to generate the resume.')
+      }
     } finally {
       setGenerating(false)
     }
@@ -122,9 +135,7 @@ export function GeneratePage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8">
       <h1 className="text-2xl font-semibold text-slate-900">Generate a tailored resume</h1>
       <p className="text-sm text-slate-600">
-        Using <strong>{activeTemplate.name}</strong> ({settings.pageConstraints.minPages}–
-        {settings.pageConstraints.maxPages} page
-        {settings.pageConstraints.maxPages === 1 ? '' : 's'},{' '}
+        Using <strong>{activeTemplate.name}</strong> ({formatPageRange(settings.pageConstraints)},{' '}
         {settings.sectionOrderMode === 'aiOptimized' ? 'AI-optimized section order' : 'fixed section order'}). Change
         the template on the{' '}
         <Link to="/templates" className="underline">
@@ -161,13 +172,21 @@ export function GeneratePage() {
               accept="application/pdf"
               onChange={handleUploadPdf}
               disabled={extracting}
-              className="text-sm"
+              className="cursor-pointer text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-slate-700 disabled:cursor-not-allowed"
             />
           </label>
           {extracting ? <span className="text-slate-500">Extracting text…</span> : null}
         </div>
 
         <FormError message={error} />
+        {failedLatex ? (
+          <details className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <summary className="cursor-pointer font-medium">View the LaTeX source that failed to compile</summary>
+            <pre className="mt-2 max-h-[28rem] overflow-auto rounded-md bg-white p-3 font-mono text-xs whitespace-pre-wrap text-slate-700">
+              {failedLatex}
+            </pre>
+          </details>
+        ) : null}
 
         <Button
           type="submit"
